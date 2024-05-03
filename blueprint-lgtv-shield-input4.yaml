@@ -8,7 +8,7 @@ blueprint:
       description: Select the source input that you want the Shield to switch to.
       selector:
         attribute:
-          entity_id: media_player.android_tv_192_168_1_41
+          entity_id: media_player.android_tv_192_168_1_41.source_list
 sequence:
   - choose:
       - conditions:
