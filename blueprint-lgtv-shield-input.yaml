@@ -1,6 +1,6 @@
 blueprint:
-  name: Motion Light Tutorial
-  description: Turn a light on based on detected motion
+  name: LGTV Shield Input Selector Script
+  description: Script to power on TV and switch to relevant Shield input.
   domain: script
   input: shield_source
     name: Shield Source Input
