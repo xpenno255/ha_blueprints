@@ -4,7 +4,7 @@ blueprint:
   domain: script
   input: 
     shield_source:
-      name: Source
+      name: Shield Input Source
       description: Select the source input that you want the Shield to switch to.
       selector:
           attribute: "source_list"
