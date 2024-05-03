@@ -3,6 +3,10 @@ blueprint:
   description: Turn a light on based on detected motion
   domain: script
   input: shield_source
+    name: Shield Source Input
+    description: Select the source input that you want the Shield to switch to.
+    selector:
+      attribute: "{{ state_attr('media_player.android_tv_192_168_1_41', 'source_list') }}"
 sequence:
   - choose:
       - conditions:
