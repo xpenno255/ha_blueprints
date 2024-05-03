@@ -1,4 +1,8 @@
-alias: automation-tv-input-plex-shield
+blueprint:
+  name: Motion Light Tutorial
+  description: Turn a light on based on detected motion
+  domain: script
+  input: shield_source
 sequence:
   - choose:
       - conditions:
@@ -60,7 +64,7 @@ sequence:
               - service: media_player.select_source
                 metadata: {}
                 data:
-                  source: Plex
+                  source: !input shield_source
                 target:
                   device_id: f43d557a022ca182178f872d45499988
             else:
@@ -74,7 +78,7 @@ sequence:
               - service: media_player.select_source
                 metadata: {}
                 data:
-                  source: Plex
+                  source: !input shield_source
                 target:
                   device_id: f43d557a022ca182178f872d45499988
     default:
@@ -116,7 +120,7 @@ sequence:
           - service: media_player.select_source
             metadata: {}
             data:
-              source: Plex
+              source: !input shield_source
             target:
               device_id: f43d557a022ca182178f872d45499988
         else:
@@ -130,7 +134,7 @@ sequence:
           - service: media_player.select_source
             metadata: {}
             data:
-              source: Plex
+              source: !input shield_source
             target:
               device_id: f43d557a022ca182178f872d45499988
 mode: restart
