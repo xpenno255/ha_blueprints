@@ -2,15 +2,16 @@ blueprint:
   name: LGTV Shield Input Selector Script
   description: Script to power on TV and switch to relevant Shield input.
   domain: script
-  input: shield_source
-    name: Source
-    description: Select the source input that you want the Shield to switch to.
-    selector:
-        attribute: "source_list"
-        entity:
-          domain: media_player
-          device_id: f43d557a022ca182178f872d45499988
-          integration: android_tv
+  input: 
+    shield_source:
+      name: Source
+      description: Select the source input that you want the Shield to switch to.
+      selector:
+          attribute: "source_list"
+          entity:
+            domain: media_player
+            device_id: f43d557a022ca182178f872d45499988
+            integration: android_tv
 sequence:
   - choose:
       - conditions:
