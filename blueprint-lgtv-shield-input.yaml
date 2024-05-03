@@ -1,0 +1,137 @@
+alias: automation-tv-input-plex-shield
+sequence:
+  - choose:
+      - conditions:
+          - condition: device
+            device_id: 349f3370752c0f45979897ccce358fbc
+            domain: media_player
+            entity_id: 6c135c75567861890dab77ec3f79aeba
+            type: is_off
+        sequence:
+          - service: script.sonos_livingroom_set_volume_20
+            data: {}
+          - service: script.shield_power_on
+            data: {}
+          - service: script.powerontv
+            data: {}
+          - wait_for_trigger:
+              - platform: device
+                device_id: 349f3370752c0f45979897ccce358fbc
+                domain: media_player
+                entity_id: 6c135c75567861890dab77ec3f79aeba
+                type: turned_on
+                for:
+                  hours: 0
+                  minutes: 0
+                  seconds: 3
+            continue_on_timeout: false
+            enabled: false
+          - if:
+              - condition: device
+                device_id: 349f3370752c0f45979897ccce358fbc
+                domain: media_player
+                entity_id: 6c135c75567861890dab77ec3f79aeba
+                type: is_on
+            then:
+              - service: script.tv_input_shield
+                data: {}
+            else:
+              - wait_for_trigger:
+                  - platform: device
+                    device_id: 349f3370752c0f45979897ccce358fbc
+                    domain: media_player
+                    entity_id: 6c135c75567861890dab77ec3f79aeba
+                    type: turned_on
+                continue_on_timeout: false
+              - service: script.tv_input_shield
+                data: {}
+          - if:
+              - condition: device
+                type: is_on
+                device_id: 192fc08a74169dd93eb446f67dfd50d1
+                entity_id: 7587d7cb5f5635b48019a20f0d5a9767
+                domain: remote
+            then:
+              - delay:
+                  hours: 0
+                  minutes: 0
+                  seconds: 2
+                  milliseconds: 0
+              - service: media_player.select_source
+                metadata: {}
+                data:
+                  source: Plex
+                target:
+                  device_id: f43d557a022ca182178f872d45499988
+            else:
+              - wait_for_trigger:
+                  - platform: device
+                    type: turned_on
+                    device_id: 192fc08a74169dd93eb446f67dfd50d1
+                    entity_id: 7587d7cb5f5635b48019a20f0d5a9767
+                    domain: remote
+                continue_on_timeout: false
+              - service: media_player.select_source
+                metadata: {}
+                data:
+                  source: Plex
+                target:
+                  device_id: f43d557a022ca182178f872d45499988
+    default:
+      - service: script.sonos_livingroom_set_volume_20
+        data: {}
+      - service: script.shield_power_on
+        data: {}
+      - if:
+          - condition: device
+            device_id: 349f3370752c0f45979897ccce358fbc
+            domain: media_player
+            entity_id: 6c135c75567861890dab77ec3f79aeba
+            type: is_on
+        then:
+          - service: script.tv_input_shield
+            data: {}
+        else:
+          - wait_for_trigger:
+              - platform: device
+                device_id: 349f3370752c0f45979897ccce358fbc
+                domain: media_player
+                entity_id: 6c135c75567861890dab77ec3f79aeba
+                type: turned_on
+            continue_on_timeout: false
+          - service: script.tv_input_shield
+            data: {}
+      - if:
+          - condition: device
+            device_id: 192fc08a74169dd93eb446f67dfd50d1
+            domain: media_player
+            entity_id: 3fffa34e9c3881b94812048d0b0cac8b
+            type: is_on
+        then:
+          - delay:
+              hours: 0
+              minutes: 0
+              seconds: 2
+              milliseconds: 0
+          - service: media_player.select_source
+            metadata: {}
+            data:
+              source: Plex
+            target:
+              device_id: f43d557a022ca182178f872d45499988
+        else:
+          - wait_for_trigger:
+              - platform: device
+                type: turned_on
+                device_id: 192fc08a74169dd93eb446f67dfd50d1
+                entity_id: 7587d7cb5f5635b48019a20f0d5a9767
+                domain: remote
+            continue_on_timeout: false
+          - service: media_player.select_source
+            metadata: {}
+            data:
+              source: Plex
+            target:
+              device_id: f43d557a022ca182178f872d45499988
+mode: restart
+icon: mdi:plex
