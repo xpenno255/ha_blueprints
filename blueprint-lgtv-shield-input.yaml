@@ -3,7 +3,7 @@ blueprint:
   description: Script to power on TV and switch to relevant Shield input.
   domain: script
   input: shield_source
-    name: 'Shield Source Input'
+    name: Source
     description: Select the source input that you want the Shield to switch to.
     selector:
         attribute: "source_list"
