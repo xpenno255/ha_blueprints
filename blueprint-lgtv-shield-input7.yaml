@@ -7,8 +7,8 @@ blueprint:
       name: Shield Input Source
       description: Select the source input that you want the Shield to switch to.
       selector:
-        template:
-          [{{ state_attr('media_player.android_tv_192_168_1_41', 'source_list') }}]
+        attribute:
+          entityid: input_select.shield_input_sources
 sequence:
   - choose:
       - conditions:
