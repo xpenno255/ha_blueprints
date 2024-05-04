@@ -8,7 +8,7 @@ blueprint:
       description: Select the source input that you want the Shield to switch to.
       selector:
         attribute:
-          entityid: input_select.shield_input_sources
+          entity_id: input_select.shield_input_sources
 sequence:
   - choose:
       - conditions:
