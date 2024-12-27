@@ -1,157 +1,19 @@
 blueprint:
   name: Philips Hue Dimmer switch v2 (Zigbee2MQTT)
   description:
-    "Tested with Philips Hue Smart Wireless Dimmer Switch V2 (929002398602).
-    \n\n
-    To have different actions on short press and on hold (long press), use 'button release' (`*_press_release`) and 'button hold once' (`*_hold_once`) commands,
-    as 'press' (`*_press`) will always trigger before 'button hold' (`*_hold`).
-    \n\n
-    When you hold a button, 'button hold' (`*_hold`) command is repeated roughly once per second. This may not work as desired with actions like toggling light/switch.
-    If you want an action to run only once when the button hold action is registered, use 'button hold once' (`*_hold_once`). It's better than using 'button hold release'
-    as the result can be observed before releasing the button after holding.
-    \n\n
-    As 'button hold' action is repeated by the device while you keep holding the button, it's a good way to run actions which increment / decrement some value (such as light dimming).
-    To make it react as soon as the button is pressed, copy the same action to 'button press' (press action occurs immediately, while hold action occurs after a delay).
-    \n\n
-    Make sure to manually create a separate Text Helper per dimmer device and define its entity in the automation. It's used to store the last controller event to filter possible
-    empty events and handle 'button hold once' actions.
+    "Hacked up version of Philips Hue Dimmer switch v2 (Zigbee2MQTT) to work with the new z2m v2
     "
   domain: automation
   input:
-    action_sensor:
-      name: Action Sensor
-      description: Zigbee2mqtt Hue Dimmer action
+    hue_dimmer_v2_device:
+      name: Philips Hue v2 Smart Dimmer Switch and Remote
+      description: List of available Philips Hue v2 Smart Dimmer Switch and Remote devices
       selector:
-        entity:
-          integration: mqtt
-          domain: sensor
-          multiple: false
-    helper_last_controller_event:
-      name: (Required) Helper - Last Controller Event
-      description:
-        Input Text used to store the last event fired by the controller.
-        You will need to manually create a text input Helper entity for this.
-      default: ""
-      selector:
-        entity:
-          domain: input_text
-          multiple: false
+        device:
+          integration: zha
+          model: RWL022
     on_press:
       name: ON button press
-      description: Action to run
-      default: []
-      selector:
-        action: {}
-    on_press_release:
-      name: ON button release
-      description: Action to run
-      default: []
-      selector:
-        action: {}
-    on_hold:
-      name: ON button hold
-      description: Action to run (repeat while holding)
-      default: []
-      selector:
-        action: {}
-    on_hold_once:
-      name: ON button hold once
-      description: Action to run only once (no repeat)
-      default: []
-      selector:
-        action: {}
-    on_hold_release:
-      name: ON button hold release
-      description: Action to run
-      default: []
-      selector:
-        action: {}
-    up_press:
-      name: UP button press
-      description: Action to run
-      default: []
-      selector:
-        action: {}
-    up_press_release:
-      name: UP button release
-      description: Action to run
-      default: []
-      selector:
-        action: {}
-    up_hold:
-      name: UP button hold
-      description: Action to run (repeat while holding)
-      default: []
-      selector:
-        action: {}
-    up_hold_once:
-      name: UP button hold once
-      description: Action to run only once (no repeat)
-      default: []
-      selector:
-        action: {}
-    up_hold_release:
-      name: UP button hold release
-      description: Action to run
-      default: []
-      selector:
-        action: {}
-    down_press:
-      name: DOWN button press
-      description: Action to run
-      default: []
-      selector:
-        action: {}
-    down_press_release:
-      name: DOWN button release
-      description: Action to run
-      default: []
-      selector:
-        action: {}
-    down_hold:
-      name: DOWN button hold
-      description: Action to run (repeat while holding)
-      default: []
-      selector:
-        action: {}
-    down_hold_once:
-      name: DOWN button hold once
-      description: Action to run only once (no repeat)
-      default: []
-      selector:
-        action: {}
-    down_hold_release:
-      name: DOWN button hold release
-      description: Action to run
-      default: []
-      selector:
-        action: {}
-    off_press:
-      name: OFF/HUE button press
-      description: Action to run
-      default: []
-      selector:
-        action: {}
-    off_press_release:
-      name: OFF/HUE button release
-      description: Action to run
-      default: []
-      selector:
-        action: {}
-    off_hold:
-      name: OFF/HUE button hold
-      description: Action to run (repeat while holding)
-      default: []
-      selector:
-        action: {}
-    off_hold_once:
-      name: OFF/HUE button hold once
-      description: Action to run only once (no repeat)
-      default: []
-      selector:
-        action: {}
-    off_hold_release:
-      name: OFF/HUE button hold release
       description: Action to run
       default: []
       selector:
@@ -159,11 +21,10 @@ blueprint:
   source_url: "https://gist.github.com/CrazyCoder/28d660d9e2e8464458e591ad79b3698e"
 mode: restart
 max_exceeded: silent
-trigger:
-  - platform: event
+triggers:
+  - trigger: state
     event_type: state_changed
-    event_data:
-      entity_id: !input action_sensor
+      entity_id: !input hue_dimmer_v2_device
 condition:
   - condition: template
     value_template: '{{ trigger.event.data.new_state.state not in ("", "None", "unknown") }}'
