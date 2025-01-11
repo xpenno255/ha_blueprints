@@ -83,11 +83,11 @@ condition:
     state: "off"
   - condition: state
     entity_id: !input occupancy_sensor
-    state: "off"
+    state: "on"
     for:
       minutes: 30
-  - condition: template
-    value_template: "{{ states(external_temperature) | float < 10 }}"
+#  - condition: template
+#    value_template: "{{ states(external_temperature) | float < 10 }}"
 
 action:
   - variables:
@@ -103,9 +103,9 @@ action:
         sequence:
           - service: climate.set_temperature
             target:
-              entity_id: "{{ thermostat }}"
+              entity_id: !input thermostat
             data:
-              temperature: "{{ scheduled_setpoint + delta_above_10 }}"
+              temperature: "{{ scheduled_setpoint + var_delta_above_10 }}"
               hvac_mode: "heat"
 
       - conditions:
@@ -114,9 +114,9 @@ action:
         sequence:
           - service: climate.set_temperature
             target:
-              entity_id: "{{ thermostat }}"
+              entity_id: !input thermostat
             data:
-              temperature: "{{ scheduled_setpoint + delta_10_to_5 }}"
+              temperature: "{{ scheduled_setpoint + var_delta_10_to_5 }}"
 
       - conditions:
           - condition: template
@@ -124,9 +124,9 @@ action:
         sequence:
           - service: climate.set_temperature
             target:
-              entity_id: "{{ thermostat }}"
+              entity_id: !input thermostat
             data:
-              temperature: "{{ scheduled_setpoint + delta_5_to_0 }}"
+              temperature: "{{ scheduled_setpoint + var_delta_5_to_0 }}"
 
       - conditions:
           - condition: template
@@ -134,13 +134,13 @@ action:
         sequence:
           - service: climate.set_temperature
             target:
-              entity_id: "{{ thermostat }}"
+              entity_id: !input thermostat
             data:
-              temperature: "{{ scheduled_setpoint + delta_below_0 }}"
+              temperature: "{{ scheduled_setpoint + var_delta_below_0 }}"
 
   - delay: "00:30:00"
   - service: climate.set_temperature
     target:
-      entity_id: "{{ thermostat }}"
+      entity_id: !input thermostat
     data:
       temperature: "{{ scheduled_setpoint }}"
