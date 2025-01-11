@@ -147,3 +147,4 @@ action:
       entity_id: !input thermostat
     data:
       temperature: "{{ scheduled_setpoint }}"
+mode: restart
