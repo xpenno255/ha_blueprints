@@ -12,6 +12,13 @@ blueprint:
         entity:
           integration: ramses_cc
           domain: climate
+    scheduled_setpoint:
+      name: Scheduled Setpoint Helper
+      description: Input helper to retrieve the scheduled setpoint temperature.
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
     external_temperature:
       name: External Temperature Sensor
       description: Select the external temperature sensor.
@@ -19,12 +26,6 @@ blueprint:
         entity:
           domain: sensor
           device_class: temperature
-    scheduled_setpoint:
-      name: Scheduled Setpoint Helper
-      description: Input helper to retrieve the scheduled setpoint temperature.
-      selector:
-        entity:
-          domain: sensor
     delta_above_10:
       name: Delta for >10°C
       description: Adjustment to setpoint when external temperature is above 10°C.
