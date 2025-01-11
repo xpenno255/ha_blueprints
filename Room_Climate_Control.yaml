@@ -1,0 +1,138 @@
+blueprint:
+  name: Room Thermostat Temperature Control
+  description: >
+    Adjust the thermostat setpoint based on external temperature, room schedules,
+    and specific conditions.
+  domain: automation
+  input:
+    thermostat:
+      name: Target Thermostat
+      description: Select the thermostat to control.
+      selector:
+        entity:
+          integration: ramses_cc
+          domain: climate
+    external_temperature:
+      name: External Temperature Sensor
+      description: Select the external temperature sensor.
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+    delta_above_10:
+      name: Delta for >10°C
+      description: Adjustment to setpoint when external temperature is above 10°C.
+      selector:
+        number:
+          min: -3
+          max: 3
+          step: 0.5
+    delta_10_to_5:
+      name: Delta for 10°C to 5°C
+      description: Adjustment to setpoint when external temperature is between 10°C and 5°C.
+      selector:
+        number:
+          min: -3
+          max: 3
+          step: 0.5
+    delta_5_to_0:
+      name: Delta for 5°C to 0°C
+      description: Adjustment to setpoint when external temperature is between 5°C and 0°C.
+      selector:
+        number:
+          min: -3
+          max: 3
+          step: 0.5
+    delta_below_0:
+      name: Delta for <0°C
+      description: Adjustment to setpoint when external temperature is below 0°C.
+      selector:
+        number:
+          min: -3
+          max: 3
+          step: 0.5
+    holiday_mode:
+      name: Holiday Mode Toggle
+      description: Entity to represent Holiday Mode status.
+      selector:
+        entity:
+          domain: input_boolean
+    occupancy_sensor:
+      name: Occupancy Sensor
+      description: Sensor to check if the home is occupied.
+      selector:
+        entity:
+          domain: binary_sensor
+
+trigger:
+  - platform: time_pattern
+    minutes: "/15"
+  - platform: state
+    entity_id: !input thermostat
+    attribute: temperature
+
+condition:
+  - condition: state
+    entity_id: !input holiday_mode
+    state: "off"
+  - condition: state
+    entity_id: !input occupancy_sensor
+    state: "off"
+    for:
+      minutes: 30
+  - condition: template
+    value_template: "{{ states(!input external_temperature) | float < 10 }}"
+
+action:
+  - variables:
+      current_temperature: "{{ states(!input external_temperature) | float }}"
+      current_setpoint: "{{ state_attr(!input thermostat, 'temperature') | float }}"
+
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ current_temperature > 10 }}"
+        sequence:
+          - service: climate.set_temperature
+            target:
+              entity_id: !input thermostat
+            data:
+              temperature: "{{ current_setpoint + !input delta_above_10 }}"
+              hvac_mode: "heat"
+
+      - conditions:
+          - condition: template
+            value_template: "{{ 5 < current_temperature <= 10 }}"
+        sequence:
+          - service: climate.set_temperature
+            target:
+              entity_id: !input thermostat
+            data:
+              temperature: "{{ current_setpoint + !input delta_10_to_5 }}"
+
+      - conditions:
+          - condition: template
+            value_template: "{{ 0 < current_temperature <= 5 }}"
+        sequence:
+          - service: climate.set_temperature
+            target:
+              entity_id: !input thermostat
+            data:
+              temperature: "{{ current_setpoint + !input delta_5_to_0 }}"
+
+      - conditions:
+          - condition: template
+            value_template: "{{ current_temperature <= 0 }}"
+        sequence:
+          - service: climate.set_temperature
+            target:
+              entity_id: !input thermostat
+            data:
+              temperature: "{{ current_setpoint + !input delta_below_0 }}"
+
+  - delay: "00:30:00"
+  - service: climate.set_temperature
+    target:
+      entity_id: !input thermostat
+    data:
+      temperature: "{{ current_setpoint }}"
