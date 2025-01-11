@@ -19,6 +19,12 @@ blueprint:
         entity:
           domain: sensor
           device_class: temperature
+    scheduled_setpoint:
+      name: Scheduled Setpoint Helper
+      description: Input helper to retrieve the scheduled setpoint temperature.
+      selector:
+        entity:
+          domain: sensor
     delta_above_10:
       name: Delta for >10°C
       description: Adjustment to setpoint when external temperature is above 10°C.
@@ -86,7 +92,7 @@ condition:
 action:
   - variables:
       current_temperature: "{{ states(!input external_temperature) | float }}"
-      current_setpoint: "{{ state_attr(!input thermostat, 'temperature') | float }}"
+      scheduled_setpoint: "{{ states(!input scheduled_setpoint) | float }}"
 
   - choose:
       - conditions:
@@ -97,7 +103,7 @@ action:
             target:
               entity_id: !input thermostat
             data:
-              temperature: "{{ current_setpoint + !input delta_above_10 }}"
+              temperature: "{{ scheduled_setpoint + !input delta_above_10 }}"
               hvac_mode: "heat"
 
       - conditions:
@@ -108,7 +114,7 @@ action:
             target:
               entity_id: !input thermostat
             data:
-              temperature: "{{ current_setpoint + !input delta_10_to_5 }}"
+              temperature: "{{ scheduled_setpoint + !input delta_10_to_5 }}"
 
       - conditions:
           - condition: template
@@ -118,7 +124,7 @@ action:
             target:
               entity_id: !input thermostat
             data:
-              temperature: "{{ current_setpoint + !input delta_5_to_0 }}"
+              temperature: "{{ scheduled_setpoint + !input delta_5_to_0 }}"
 
       - conditions:
           - condition: template
@@ -128,11 +134,11 @@ action:
             target:
               entity_id: !input thermostat
             data:
-              temperature: "{{ current_setpoint + !input delta_below_0 }}"
+              temperature: "{{ scheduled_setpoint + !input delta_below_0 }}"
 
   - delay: "00:30:00"
   - service: climate.set_temperature
     target:
       entity_id: !input thermostat
     data:
-      temperature: "{{ current_setpoint }}"
+      temperature: "{{ scheduled_setpoint }}"
