@@ -58,18 +58,18 @@ blueprint:
           min: -3
           max: 3
           step: 0.5
-    holiday_mode:
-      name: Holiday Mode Toggle
-      description: Entity to represent Holiday Mode status.
-      selector:
-        entity:
-          domain: input_boolean
-    occupancy_sensor:
-      name: Occupancy Sensor
-      description: Sensor to check if the home is occupied.
-      selector:
-        entity:
-          domain: binary_sensor
+#    holiday_mode:
+#      name: Holiday Mode Toggle
+#      description: Entity to represent Holiday Mode status.
+#      selector:
+#        entity:
+#          domain: input_boolean
+#    occupancy_sensor:
+#      name: Occupancy Sensor
+#      description: Sensor to check if the home is occupied.
+#      selector:
+#        entity:
+#          domain: binary_sensor
 mode: restart
 
 trigger:
@@ -83,13 +83,22 @@ condition:
 #      external_temperature_var: !input external_temperature
 #      current_temperature: "{{ states(external_temperature_var) | float }}"
   - condition: state
-    entity_id: !input holiday_mode
+    entity_id: input_boolean.holiday_mode
     state: "off"
-  - condition: state
-    entity_id: !input occupancy_sensor
-    state: "on"
-    for:
-      minutes: 30
+  - condition: not
+    conditions:
+      - condition: state
+        entity_id: binary_sensor.home_occupancy
+        state: "off"
+        for:
+          hours: 0
+          minutes: 30
+          seconds: 0
+#  - condition: state
+#    entity_id: !input occupancy_sensor
+#    state: "on"
+#    for:
+#      minutes: 30
 #  - condition: template
 #    value_template: "{{ states(current_temperature) | float < 10 }}"
 
