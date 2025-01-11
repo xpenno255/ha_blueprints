@@ -81,8 +81,8 @@ condition:
   - variables:
       external_temperature: !input external_temperature
       scheduled_setpoint: !input scheduled_setpoint
-      current_temperature: "{{ states(external_temperature) | float }}"
-      current_scheduled_setpoint: "{{ states(scheduled_setpoint) | float }}"
+      current_temperature: "{{ states(''external_temperature'') | float }}"
+      current_scheduled_setpoint: "{{ states(''scheduled_setpoint'') | float }}"
   - condition: state
     entity_id: !input holiday_mode
     state: "off"
@@ -98,8 +98,8 @@ action:
   - variables:
       external_temperature: !input external_temperature
       scheduled_setpoint: !input scheduled_setpoint
-      current_temperature: "{{ states(external_temperature) | float }}"
-      current_scheduled_setpoint: "{{ states(scheduled_setpoint) | float }}"
+      current_temperature: "{{ states(''external_temperature'') | float }}"
+      current_scheduled_setpoint: "{{ states(''scheduled_setpoint'') | float }}"
 
   - choose:
       - conditions:
