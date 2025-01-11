@@ -72,7 +72,7 @@ blueprint:
 
 trigger:
   - platform: time_pattern
-    minutes: "/15"
+    minutes: "/5"
   - platform: state
     entity_id: !input thermostat
     attribute: temperature
@@ -91,7 +91,7 @@ condition:
 
 action:
   - variables:
-      current_temperature_var: !input external_temperature
+      external_temperature_var: !input external_temperature
       scheduled_setpoint_var: !input scheduled_setpoint
       current_temperature: "{{ states(external_temperature_var) | float }}"
       scheduled_setpoint: "{{ states(scheduled_setpoint_var) | float }}"
