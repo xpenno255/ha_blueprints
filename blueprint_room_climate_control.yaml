@@ -24,7 +24,7 @@ blueprint:
       description: Input helper to retrieve the scheduled setpoint temperature.
       selector:
         entity:
-          domain: input_number
+          domain: sensor
     delta_above_10:
       name: Delta for >10°C
       description: Adjustment to setpoint when external temperature is above 10°C.
