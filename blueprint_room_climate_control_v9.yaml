@@ -95,6 +95,10 @@ action:
       scheduled_setpoint_var: !input scheduled_setpoint
       current_temperature: "{{ states(external_temperature_var) | float }}"
       scheduled_setpoint: "{{ states(scheduled_setpoint_var) | float }}"
+      delta_above_10: !input delta_above_10
+      delta_10_to_5: !input delta_10_to_5
+      delta_5_to_0: !input delta_5_to_0
+      delta_below_0: !input delta_below_0
 
   - choose:
       - conditions:
