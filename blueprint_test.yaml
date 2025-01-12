@@ -15,7 +15,7 @@ blueprint:
           description: test
           selector:
             entity:
-    condition:
+  condition:
     - condition: state
       entity_id: input_boolean.holiday_mode
       state: "off"
