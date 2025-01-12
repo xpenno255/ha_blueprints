@@ -5,72 +5,97 @@ blueprint:
     and specific conditions.
   domain: automation
   input:
-    thermostat:
-      name: Target Thermostat
-      description: Select the thermostat to control.
-      selector:
-        entity:
-          integration: ramses_cc
-          domain: climate
-    scheduled_setpoint:
-      name: Scheduled Setpoint Helper
-      description: Input helper to retrieve the scheduled setpoint temperature.
-      selector:
-        entity:
-          domain: sensor
-          device_class: temperature
-    external_temperature:
-      name: External Temperature Sensor
-      description: Select the external temperature sensor.
-      selector:
-        entity:
-          domain: sensor
-          device_class: temperature
-    delta_above_15:
-      name: Delta for >15°C
-      selector:
-        number:
-          min: -3
-          max: 3
-          step: 0.5
-    delta_above_10:
-      name: Delta for >10°C
-      selector:
-        number:
-          min: -3
-          max: 3
-          step: 0.5
-    delta_10_to_5:
-      name: Delta for 10°C to 5°C
-      selector:
-        number:
-          min: -3
-          max: 3
-          step: 0.5
-    delta_5_to_0:
-      name: Delta for 5°C to 0°C
-      selector:
-        number:
-          min: -3
-          max: 3
-          step: 0.5
-    delta_below_0:
-      name: Delta for <0°C
-      selector:
-        number:
-          min: -3
-          max: 3
-          step: 0.5
-    holiday_mode:
-      name: Holiday Mode
-      selector:
-        entity:
-          domain: input_boolean
-    home_occupancy:
-      name: Home Occupancy Sensor
-      selector:
-        entity:
-          domain: binary_sensor
+    thermostat_inputs:
+      name: '# Thermostat Inputs'
+      collapsed: false
+      input:
+        thermostat:
+          name: Target Thermostat
+          description: Select the thermostat to control.
+          selector:
+            entity:
+              integration: ramses_cc
+              domain: climate
+        scheduled_setpoint:
+          name: Scheduled Setpoint Helper
+          description: Input helper to retrieve the scheduled setpoint temperature.
+          selector:
+            entity:
+              domain: sensor
+              device_class: temperature
+        external_temperature:
+          name: External Temperature Sensor
+          description: Select the external temperature sensor.
+          selector:
+            entity:
+              domain: sensor
+              device_class: temperature
+        delta_above_15:
+          name: Delta for >15°C
+          description: Adjustment to setpoint when external temperature is above 15°C.
+          selector:
+            number:
+              min: -3
+              max: 3
+              step: 0.5
+        delta_above_10:
+          name: Delta for >10°C
+          description: Adjustment to setpoint when external temperature is between 10°C and 15°C.
+          selector:
+            number:
+              min: -3
+              max: 3
+              step: 0.5
+        delta_10_to_5:
+          name: Delta for 10°C to 5°C
+          description: Adjustment to setpoint when external temperature is between 10°C and 5°C.
+          selector:
+            number:
+              min: -3
+              max: 3
+              step: 0.5
+        delta_5_to_0:
+          name: Delta for 5°C to 0°C
+          description: Adjustment to setpoint when external temperature is between 5°C and 0°C.
+          selector:
+            number:
+              min: -3
+              max: 3
+              step: 0.5
+        delta_below_0:
+          name: Delta for <0°C
+          description: Adjustment to setpoint when external temperature is below 0°C.
+          selector:
+            number:
+              min: -3
+              max: 3
+              step: 0.5
+    occupancy_inputs:
+      name: '# Occupancy Inputs'
+      collapsed: false
+      input:
+        room_occupancy_sensor:
+          name: Room Occupancy Sensor
+          description: Select the room occupancy sensor.
+          selector:
+            entity:
+              domain: binary_sensor
+        unoccupied_offset:
+          name: Unoccupied Offset
+          description: How much should the room temperature decrease when the room is unoccupied.
+          selector:
+            number:
+              min: -5
+              max: 0
+              step: 0.5
+        unoccupied_duration:
+          name: Unoccupied Duration
+          description: How long in minutes should the room be marked as unoccupied before decreasing the temperature.
+          selector:
+            number:
+              min: 0
+              max: 59
+              step: 1
 
 mode: restart
 
@@ -78,75 +103,92 @@ trigger:
   - platform: time_pattern
     minutes: "/5"
 
+variables:
+  external_temperature_var: !input external_temperature
+  scheduled_setpoint_var: !input scheduled_setpoint
+  current_temperature: "{{ states(external_temperature_var) | float }}"
+  scheduled_setpoint: "{{ states(scheduled_setpoint_var) | float }}"
+  delta_above_15: !input delta_above_15
+  delta_above_10: !input delta_above_10
+  delta_10_to_5: !input delta_10_to_5
+  delta_5_to_0: !input delta_5_to_0
+  delta_below_0: !input delta_below_0
+
 condition:
   - condition: state
-    entity_id: !input holiday_mode
+    entity_id: input_boolean.holiday_mode
     state: "off"
-  - condition: state
-    entity_id: !input home_occupancy
-    state: "on"
+  - condition: not
+    conditions:
+      - condition: state
+        entity_id: binary_sensor.home_occupancy
+        state: "off"
+        for:
+          hours: 0
+          minutes: 30
+          seconds: 0
   - condition: time
     after: "06:30:00"
     before: "22:30:00"
+    weekday:
+      - sun
+      - sat
+      - fri
+      - thu
+      - wed
+      - tue
+      - mon
 
 action:
   - choose:
       - conditions:
-          - condition: numeric_state
-            entity_id: !input external_temperature
-            above: 15
+          - condition: template
+            value_template: "{{ current_temperature > 15 }}"
         sequence:
           - service: climate.set_temperature
             target:
               entity_id: !input thermostat
             data:
-              temperature: "{{ states(!input scheduled_setpoint) | float + !input delta_above_15 }}"
+              temperature: "{{ scheduled_setpoint + delta_above_15 }}"
       - conditions:
-          - condition: numeric_state
-            entity_id: !input external_temperature
-            above: 10
-            below: 15
+          - condition: template
+            value_template: "{{ 10 < current_temperature <= 15 }}"
         sequence:
           - service: climate.set_temperature
             target:
               entity_id: !input thermostat
             data:
-              temperature: "{{ states(!input scheduled_setpoint) | float + !input delta_above_10 }}"
+              temperature: "{{ scheduled_setpoint + delta_above_10 }}"
       - conditions:
-          - condition: numeric_state
-            entity_id: !input external_temperature
-            above: 5
-            below: 10
+          - condition: template
+            value_template: "{{ 5 < current_temperature <= 10 }}"
         sequence:
           - service: climate.set_temperature
             target:
               entity_id: !input thermostat
             data:
-              temperature: "{{ states(!input scheduled_setpoint) | float + !input delta_10_to_5 }}"
+              temperature: "{{ scheduled_setpoint + delta_10_to_5 }}"
       - conditions:
-          - condition: numeric_state
-            entity_id: !input external_temperature
-            above: 0
-            below: 5
+          - condition: template
+            value_template: "{{ 0 < current_temperature <= 5 }}"
         sequence:
           - service: climate.set_temperature
             target:
               entity_id: !input thermostat
             data:
-              temperature: "{{ states(!input scheduled_setpoint) | float + !input delta_5_to_0 }}"
+              temperature: "{{ scheduled_setpoint + delta_5_to_0 }}"
       - conditions:
-          - condition: numeric_state
-            entity_id: !input external_temperature
-            below: 0
+          - condition: template
+            value_template: "{{ current_temperature <= 0 }}"
         sequence:
           - service: climate.set_temperature
             target:
               entity_id: !input thermostat
             data:
-              temperature: "{{ states(!input scheduled_setpoint) | float + !input delta_below_0 }}"
+              temperature: "{{ scheduled_setpoint + delta_below_0 }}"
   - delay: "00:15:30"
   - service: climate.set_temperature
     target:
       entity_id: !input thermostat
     data:
-      temperature: "{{ states(!input scheduled_setpoint) | float }}"
+      temperature: "{{ scheduled_setpoint }}"
