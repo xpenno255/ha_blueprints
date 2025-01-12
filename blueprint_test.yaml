@@ -1,0 +1,21 @@
+blueprint:
+  name: "Cover Control Automation (CCA)"
+  description: "# ⭐ Cover Control Automation (CCA) ⭐"
+  domain: automation
+  homeassistant:
+    min_version: "2024.10.0"
+  input:
+    feature_section:
+      name: "Automation Options"
+      icon: mdi:window-shutter-cog
+      collapsed: true
+      input:
+        auto_options:
+          name: "👉 Automation Options"
+          description: test
+          selector:
+            entity:
+    condition:
+    - condition: state
+      entity_id: input_boolean.holiday_mode
+      state: "off"
