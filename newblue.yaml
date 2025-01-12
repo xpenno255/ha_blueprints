@@ -166,3 +166,39 @@ actions:
             data:
               temperature: "{{ scheduled_setpoint + delta_above_10 }}"
               hvac_mode: "heat"
+      - conditions:
+          - condition: template
+            value_template: "{{ 5 < current_temperature <= 10 }}"
+        sequence:
+          - service: climate.set_temperature
+            target:
+              entity_id: !input thermostat
+            data:
+              temperature: "{{ scheduled_setpoint + delta_10_to_5 }}"
+
+      - conditions:
+          - condition: template
+            value_template: "{{ 0 < current_temperature <= 5 }}"
+        sequence:
+          - service: climate.set_temperature
+            target:
+              entity_id: !input thermostat
+            data:
+              temperature: "{{ scheduled_setpoint + delta_5_to_0 }}"
+
+      - conditions:
+          - condition: template
+            value_template: "{{ current_temperature <= 0 }}"
+        sequence:
+          - service: climate.set_temperature
+            target:
+              entity_id: !input thermostat
+            data:
+              temperature: "{{ scheduled_setpoint + delta_below_0 }}"
+
+  - delay: "00:15:30"
+  - service: climate.set_temperature
+    target:
+      entity_id: !input thermostat
+    data:
+      temperature: "{{ scheduled_setpoint }}"
