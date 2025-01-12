@@ -195,3 +195,9 @@ actions:
               entity_id: !input thermostat
             data:
               temperature: "{{ scheduled_setpoint + delta_below_0 }}"
+  - delay: "00:15:30"
+  - service: climate.set_temperature
+    target:
+      entity_id: !input thermostat
+    data:
+      temperature: "{{ scheduled_setpoint }}"
