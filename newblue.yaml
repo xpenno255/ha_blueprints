@@ -120,7 +120,7 @@ triggers:
 #    entity_id: !input scheduled_setpoint
 
 conditions:
-  - platform: state
+  - condition: state
     entity_id: input_boolean.holiday_mode
     state: "off"
   - platform: not
