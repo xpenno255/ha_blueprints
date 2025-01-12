@@ -129,7 +129,7 @@ action:
       delta_below_0: !input delta_below_0
 
   - choose:
-        - conditions:
+      - conditions:
           - condition: template
             value_template: "{{ current_temperature > 15 }}"
         sequence:
