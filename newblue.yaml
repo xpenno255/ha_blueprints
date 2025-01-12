@@ -97,7 +97,7 @@ blueprint:
               max: 59
               step: 1
 
-  mode: restart
+mode: restart
   
 trigger_variables:
   outside_temperature: !input external_temperature
