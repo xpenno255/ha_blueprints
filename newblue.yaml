@@ -98,3 +98,39 @@ blueprint:
               step: 1
 
   mode: restart
+  
+trigger_variables:
+  outside_temperature: !input external_temperature
+
+triggers:
+  - platform: time_pattern
+    minutes: "/5"
+  - platform: state
+    entity_id: !input scheduled_setpoint
+
+conditions:
+  - platform: state
+    entity_id: input_boolean.holiday_mode
+    state: "off"
+  - platform: not
+    conditions:
+      - platform: state
+        entity_id: binary_sensor.home_occupancy
+        state: "off"
+        for:
+          hours: 0
+          minutes: 30
+          seconds: 0
+  - platform: time
+    after: "06:30:00"
+    before: "22:30:00"
+    weekday:
+      - sun
+      - sat
+      - fri
+      - thu
+      - wed
+      - tue
+      - mon
+  - platform: template
+    value_template: "{{ states(outside_temperature) | float < 15 }}"
