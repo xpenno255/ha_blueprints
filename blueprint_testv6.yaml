@@ -97,6 +97,6 @@ blueprint:
               custom_value: false
               mode: list
 conditions:
-  - condition: state
+  - platform: state
     entity_id: input_boolean.holiday_mode
     state: "off"
