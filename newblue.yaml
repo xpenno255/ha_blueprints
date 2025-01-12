@@ -102,11 +102,11 @@ mode: restart
 #trigger_variables:
 #  outside_temperature: !input external_temperature
 
-  triggers:
-    - platform: time_pattern
-      minutes: "/5"
-    - platform: state
-      entity_id: !input scheduled_setpoint
+triggers:
+  - platform: time_pattern
+    minutes: "/5"
+#  - platform: state
+#    entity_id: !input scheduled_setpoint
 
 conditions:
   - platform: state
