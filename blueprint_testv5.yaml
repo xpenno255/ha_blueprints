@@ -1,0 +1,98 @@
+blueprint:
+  name: "Test Blue"
+  description: Some Blurb
+  domain: automation
+  homeassistant:
+    min_version: "2024.10.0"
+  input:
+    blind:
+      name: "🏠 Cover"
+      description: >-
+        Which blind or roller shutter should be automated?
+
+        <details>
+        <summary><code><strong>CLICK HERE:</strong> Information about a cover group</code></summary>
+
+
+        In principle, you can use a group here.
+        But please note that there are problems with position detection for a group of covers!
+        For example, one cover may be at position 100% and the other cover at position 0%.
+        This results in a wrong group-value of 50%.
+
+
+        My clear recommendation is to create **one automation for each cover**.
+
+        </details>
+
+      selector:
+        entity:
+          filter:
+            - domain:
+                - cover
+    thermostat:
+      name: Target Thermostat
+      description: Select the thermostat to control.
+      selector:
+        entity:
+          integration: ramses_cc
+          domain: climate
+    feature_section:
+      name: "Automation Options"
+      icon: mdi:window-shutter-cog
+      collapsed: true
+      input:
+        auto_options:
+          name: "👉 Automation Options"
+          description: >-
+            This basically determines whether the cover is allowed to open or close.
+            <br /><br />
+            Normally, the daily opening and closing of the roller blinds is controlled by a timer (see below).
+            These first two options must be activated so that the blinds can be opened or closed at all.
+            <br /><br />
+            <ins>In addition to the time control</ins>, the height of the sun and a brightness sensor can also influence the daily opening and closing.
+            In this case, options 3 or 4 must be activated.
+            <br />
+            Up to this point, <ins>none of this has anything to do with sun protection</ins>.
+            This is activated in the last option.
+            <br /><br />
+            <strong>Important note:</strong>
+            The configuration of the Cover Status Helper is <ins>mandatory</ins> if you want to use the the ventilation mode or sun protection / sunshade control.
+
+            <details>
+            <summary><code><strong>CLICK HERE:</strong> Further description</code></summary>
+
+
+            This can be extended by further conditions (see below). However, it is important that the options are still activated here.
+            Otherwise the conditions will not take effect.
+
+
+            **Please ensure that the corresponding sensors are also specified.**
+            For example, the brightness control only works if a brightness sensor is also specified.
+
+            </details>
+          default:
+            [
+              auto_up_enabled,
+              auto_down_enabled,
+              auto_brightness_enabled,
+              auto_sun_enabled,
+            ]
+          selector:
+            select:
+              options:
+                - label: "🔼 - Enable generic automatic opening of the day in the morning"
+                  value: "auto_up_enabled"
+                - label: "🔻 - Enable generic automatic daily closing at the end of the day"
+                  value: "auto_down_enabled"
+                - label: "🔅 - Enable brightness control (in addition to daily opening and closing)"
+                  value: "auto_brightness_enabled"
+                - label: "☀️ - Enable sun elevation control (in addition to daily opening and closing)"
+                  value: "auto_sun_enabled"
+                - label: "💨 - Enable ventilation mode and lockout protection (helper required)"
+                  value: "auto_ventilate_enabled"
+                - label: "🥵 - Enable automatic sun protection / sunshade control (helper required)"
+                  value: "auto_shading_enabled"
+              multiple: true
+              sort: false
+              custom_value: false
+              mode: list
