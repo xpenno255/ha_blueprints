@@ -96,7 +96,7 @@ blueprint:
               sort: false
               custom_value: false
               mode: list
-  conditions:
-    - condition: state
-      entity_id: input_boolean.holiday_mode
-      state: "off"
+conditions:
+  - condition: state
+    entity_id: input_boolean.holiday_mode
+    state: "off"
