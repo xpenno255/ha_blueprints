@@ -69,14 +69,10 @@ blueprint:
 
     room_occupancy_sensor:
       name: Room Occupancy Sensor
-      description:
-        "##Occupancy Settings
-      
-        Select the room occupancy sensor."
+      description: Select the room occupancy sensor.
       selector:
         entity:
-          domain: sensor
-          device_class: binary_sensor
+          domain: binary_sensor
     unoccupied_offset:
       name: Unoccupied Offset
       description: How much should the room temperature decrease when the room is unoccupied.
