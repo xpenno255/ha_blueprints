@@ -15,6 +15,9 @@ blueprint:
           description: test
           selector:
             entity:
+  trigger:
+    - platform: time_pattern
+      minutes: "/5"
   condition:
     - condition: state
       entity_id: input_boolean.holiday_mode
