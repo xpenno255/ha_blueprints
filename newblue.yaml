@@ -6,7 +6,7 @@ blueprint:
   domain: automation
   input:
     thermostat_inputs:
-      name: Thermostat Inputs
+      name: '# Thermostat Inputs'
       collapsed: false
       input:
         thermostat:
@@ -71,7 +71,7 @@ blueprint:
               max: 3
               step: 0.5
     occupancy_inputs:
-      name: Occupancy Inputs
+      name: '# Occupancy Inputs'
       collapsed: false
       input:
         room_occupancy_sensor:
@@ -96,3 +96,5 @@ blueprint:
               min: 0
               max: 59
               step: 1
+
+  mode: restart
