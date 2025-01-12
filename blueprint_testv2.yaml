@@ -1,20 +1,31 @@
 blueprint:
-  name: "Cover Control Automation (CCA)"
-  description: "# ⭐ Cover Control Automation (CCA) ⭐"
+  name: "Test Blue"
+  description: Some Blurb
   domain: automation
   homeassistant:
     min_version: "2024.10.0"
   input:
-    feature_section:
-      name: "Automation Options"
-      icon: mdi:window-shutter-cog
-      collapsed: true
-      input:
-        auto_options:
-          name: "👉 Automation Options"
-          description: test
-          selector:
-            entity:
-  trigger:
-    - platform: time_pattern
-      minutes: "/5"
+    blind:
+      name: "🏠 Cover"
+      description: >-
+        Which blind or roller shutter should be automated?
+
+        <details>
+        <summary><code><strong>CLICK HERE:</strong> Information about a cover group</code></summary>
+
+
+        In principle, you can use a group here.
+        But please note that there are problems with position detection for a group of covers!
+        For example, one cover may be at position 100% and the other cover at position 0%.
+        This results in a wrong group-value of 50%.
+
+
+        My clear recommendation is to create **one automation for each cover**.
+
+        </details>
+
+      selector:
+        entity:
+          filter:
+            - domain:
+                - cover
