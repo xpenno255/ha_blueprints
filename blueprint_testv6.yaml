@@ -96,6 +96,9 @@ blueprint:
               sort: false
               custom_value: false
               mode: list
+triggers:
+  - platform: time_pattern
+    minutes: "/5"
 conditions:
   - platform: state
     entity_id: input_boolean.holiday_mode
