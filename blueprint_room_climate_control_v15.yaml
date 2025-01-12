@@ -5,134 +5,128 @@ blueprint:
     and specific conditions.
   domain: automation
   input:
-    thermostat_inputs:
-      name: Thermostat Inputs
-      collapsed: false
-      input:
-        thermostat:
-          name: Target Thermostat
-          description: Select the thermostat to control.
-          selector:
-            entity:
-              integration: ramses_cc
-              domain: climate
-        scheduled_setpoint:
-          name: Scheduled Setpoint Helper
-          description: Input helper to retrieve the scheduled setpoint temperature.
-          selector:
-            entity:
-              domain: sensor
-              device_class: temperature
-        external_temperature:
-          name: External Temperature Sensor
-          description: Select the external temperature sensor.
-          selector:
-            entity:
-              domain: sensor
-              device_class: temperature
-        delta_above_15:
-          name: Delta for >15°C
-          description: Adjustment to setpoint when external temperature is above 15°C.
-          selector:
-            number:
-              min: -3
-              max: 3
-              step: 0.5
-        delta_above_10:
-          name: Delta for >10°C
-          description: Adjustment to setpoint when external temperature is between 10°C and 15°c.
-          selector:
-            number:
-              min: -3
-              max: 3
-              step: 0.5
-        delta_10_to_5:
-          name: Delta for 10°C to 5°C
-          description: Adjustment to setpoint when external temperature is between 10°C and 5°C.
-          selector:
-            number:
-              min: -3
-              max: 3
-              step: 0.5
-        delta_5_to_0:
-          name: Delta for 5°C to 0°C
-          description: Adjustment to setpoint when external temperature is between 5°C and 0°C.
-          selector:
-            number:
-              min: -3
-              max: 3
-              step: 0.5
-        delta_below_0:
-          name: Delta for <0°C
-          description: Adjustment to setpoint when external temperature is below 0°C.
-          selector:
-            number:
-              min: -3
-              max: 3
-              step: 0.5
-    occupancy_inputs:
-      name: Occupancy Inputs
-      collapsed: false
-      room_occupancy_sensor:
-        name: Room Occupancy Sensor
-        description: Select the room occupancy sensor.
-        selector:
-          entity:
-            domain: binary_sensor
-      unoccupied_offset:
-        name: Unoccupied Offset
-        description: How much should the room temperature decrease when the room is unoccupied.
-        selector:
-          number:
-            min: -5
-            max: 0
-            step: 0.5
-      unoccupied_duration:
-        name: Unoccupied Duration
-        description: How long in minutes should the room be marked as unoccupied before decreasing the temperature.
-        selector:
-          number:
-            min: 0
-            max: 59
-            step: 1
+    thermostat:
+      name: Target Thermostat
+      description: Select the thermostat to control.
+      selector:
+        entity:
+          integration: ramses_cc
+          domain: climate
+    scheduled_setpoint:
+      name: Scheduled Setpoint Helper
+      description: Input helper to retrieve the scheduled setpoint temperature.
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+    external_temperature:
+      name: External Temperature Sensor
+      description: Select the external temperature sensor.
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+    delta_above_15:
+      name: Delta for >15°C
+      description: Adjustment to setpoint when external temperature is above 15°C.
+      selector:
+        number:
+          min: -3
+          max: 3
+          step: 0.5
+    delta_above_10:
+      name: Delta for >10°C
+      description: Adjustment to setpoint when external temperature is between 10°C and 15°c.
+      selector:
+        number:
+          min: -3
+          max: 3
+          step: 0.5
+    delta_10_to_5:
+      name: Delta for 10°C to 5°C
+      description: Adjustment to setpoint when external temperature is between 10°C and 5°C.
+      selector:
+        number:
+          min: -3
+          max: 3
+          step: 0.5
+    delta_5_to_0:
+      name: Delta for 5°C to 0°C
+      description: Adjustment to setpoint when external temperature is between 5°C and 0°C.
+      selector:
+        number:
+          min: -3
+          max: 3
+          step: 0.5
+    delta_below_0:
+      name: Delta for <0°C
+      description: Adjustment to setpoint when external temperature is below 0°C.
+      selector:
+        number:
+          min: -3
+          max: 3
+          step: 0.5
 
-  mode: restart
+    room_occupancy_sensor:
+      name: Room Occupancy Sensor
+      description: Select the room occupancy sensor.
+      selector:
+        entity:
+          domain: binary_sensor
+    unoccupied_offset:
+      name: Unoccupied Offset
+      description: How much should the room temperature decrease when the room is unoccupied.
+      selector:
+        number:
+          min: -5
+          max: 0
+          step: 0.5
+    unoccupied_duration:
+      name: Unoccupied Duration
+      description: How long in minutes should the room be marked as unoccupied before decreasing the temperature.
+      selector:
+        number:
+          min: 0
+          max: 59
+          step: 1
 
-  trigger_variables:
-    outside_temperature: !input external_temperature
+mode: restart
 
-  trigger:
-    - platform: time_pattern
-      minutes: "/5"
-    - platform: state
-      entity_id: !input scheduled_setpoint
+trigger_variables:
+  outside_temperature: !input external_temperature
 
-  condition:
-    - condition: state
-      entity_id: input_boolean.holiday_mode
-      state: "off"
-    - condition: not
-      conditions:
-        - condition: state
-          entity_id: binary_sensor.home_occupancy
-          state: "off"
-          for:
-            hours: 0
-            minutes: 30
-            seconds: 0
-    - condition: time
-      after: "06:30:00"
-      before: "22:30:00"
-      weekday:
-        - sun
-        - sat
-        - fri
-        - thu
-        - wed
-        - tue
-        - mon
-    - condition: template
-      value_template: "{{ states(outside_temperature) | float < 15 }}"
+trigger:
+  - platform: time_pattern
+    minutes: "/5"
+  - platform: state
+    entity_id: !input scheduled_setpoint
+
+condition:
+  - condition: state
+    entity_id: input_boolean.holiday_mode
+    state: "off"
+  - condition: not
+    conditions:
+      - condition: state
+        entity_id: binary_sensor.home_occupancy
+        state: "off"
+        for:
+          hours: 0
+          minutes: 30
+          seconds: 0
+  - condition: time
+    after: "06:30:00"
+    before: "22:30:00"
+    weekday:
+      - sun
+      - sat
+      - fri
+      - thu
+      - wed
+      - tue
+      - mon
+  - condition: template
+    value_template: "{{ states(outside_temperature) | float < 15 }}"
 
 action:
   - variables:
