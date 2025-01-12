@@ -4,69 +4,74 @@ blueprint:
     Adjust the thermostat setpoint based on external temperature, room schedules,
     and specific conditions.
   domain: automation
-  input:
-    thermostat:
-      name: Target Thermostat
-      description: Select the thermostat to control.
-      selector:
-        entity:
-          integration: ramses_cc
-          domain: climate
-    scheduled_setpoint:
-      name: Scheduled Setpoint Helper
-      description: Input helper to retrieve the scheduled setpoint temperature.
-      selector:
-        entity:
-          domain: sensor
-          device_class: temperature
-    external_temperature:
-      name: External Temperature Sensor
-      description: Select the external temperature sensor.
-      selector:
-        entity:
-          domain: sensor
-          device_class: temperature
-    delta_above_15:
-      name: Delta for >15°C
-      description: Adjustment to setpoint when external temperature is above 15°C.
-      selector:
-        number:
-          min: -3
-          max: 3
-          step: 0.5
-    delta_above_10:
-      name: Delta for >10°C
-      description: Adjustment to setpoint when external temperature is between 10°C and 15°c.
-      selector:
-        number:
-          min: -3
-          max: 3
-          step: 0.5
-    delta_10_to_5:
-      name: Delta for 10°C to 5°C
-      description: Adjustment to setpoint when external temperature is between 10°C and 5°C.
-      selector:
-        number:
-          min: -3
-          max: 3
-          step: 0.5
-    delta_5_to_0:
-      name: Delta for 5°C to 0°C
-      description: Adjustment to setpoint when external temperature is between 5°C and 0°C.
-      selector:
-        number:
-          min: -3
-          max: 3
-          step: 0.5
-    delta_below_0:
-      name: Delta for <0°C
-      description: Adjustment to setpoint when external temperature is below 0°C.
-      selector:
-        number:
-          min: -3
-          max: 3
-          step: 0.5
-
+  thermostat_inputs:
+    name: Thermostat Inputs
+    collapsed: false
+    input:
+      thermostat:
+        name: Target Thermostat
+        description: Select the thermostat to control.
+        selector:
+          entity:
+            integration: ramses_cc
+            domain: climate
+      scheduled_setpoint:
+        name: Scheduled Setpoint Helper
+        description: Input helper to retrieve the scheduled setpoint temperature.
+        selector:
+          entity:
+            domain: sensor
+            device_class: temperature
+      external_temperature:
+        name: External Temperature Sensor
+        description: Select the external temperature sensor.
+        selector:
+          entity:
+            domain: sensor
+            device_class: temperature
+      delta_above_15:
+        name: Delta for >15°C
+        description: Adjustment to setpoint when external temperature is above 15°C.
+        selector:
+          number:
+            min: -3
+            max: 3
+            step: 0.5
+      delta_above_10:
+        name: Delta for >10°C
+        description: Adjustment to setpoint when external temperature is between 10°C and 15°c.
+        selector:
+          number:
+            min: -3
+            max: 3
+            step: 0.5
+      delta_10_to_5:
+        name: Delta for 10°C to 5°C
+        description: Adjustment to setpoint when external temperature is between 10°C and 5°C.
+        selector:
+          number:
+            min: -3
+            max: 3
+            step: 0.5
+      delta_5_to_0:
+        name: Delta for 5°C to 0°C
+        description: Adjustment to setpoint when external temperature is between 5°C and 0°C.
+        selector:
+          number:
+            min: -3
+            max: 3
+            step: 0.5
+      delta_below_0:
+        name: Delta for <0°C
+        description: Adjustment to setpoint when external temperature is below 0°C.
+        selector:
+          number:
+            min: -3
+            max: 3
+            step: 0.5
+  occupancy_inputs:
+    name: Occupancy Inputs
+    collapsed: false
     room_occupancy_sensor:
       name: Room Occupancy Sensor
       description: Select the room occupancy sensor.
