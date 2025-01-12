@@ -36,7 +36,7 @@ blueprint:
           step: 0.5
     delta_above_10:
       name: Delta for >10°C
-      description: Adjustment to setpoint when external temperature is above 10°C.
+      description: Adjustment to setpoint when external temperature is between 10°C and 15°c.
       selector:
         number:
           min: -3
@@ -102,11 +102,17 @@ condition:
           hours: 0
           minutes: 30
           seconds: 0
-#  - condition: state
-#    entity_id: !input occupancy_sensor
-#    state: "on"
-#    for:
-#      minutes: 30
+  - condition: time
+    after: "06:30:00"
+    before: "22:30:00"
+    weekday:
+      - sun
+      - sat
+      - fri
+      - thu
+      - wed
+      - tue
+      - mon
 #  - condition: template
 #    value_template: "{{ states(current_temperature) | float < 10 }}"
 
