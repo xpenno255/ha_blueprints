@@ -1,0 +1,152 @@
+blueprint:
+  name: Room Thermostat Temperature Control
+  description: >
+    Adjust the thermostat setpoint based on external temperature, room schedules,
+    and specific conditions.
+  domain: automation
+  input:
+    thermostat:
+      name: Target Thermostat
+      description: Select the thermostat to control.
+      selector:
+        entity:
+          integration: ramses_cc
+          domain: climate
+    scheduled_setpoint:
+      name: Scheduled Setpoint Helper
+      description: Input helper to retrieve the scheduled setpoint temperature.
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+    external_temperature:
+      name: External Temperature Sensor
+      description: Select the external temperature sensor.
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+    delta_above_15:
+      name: Delta for >15°C
+      selector:
+        number:
+          min: -3
+          max: 3
+          step: 0.5
+    delta_above_10:
+      name: Delta for >10°C
+      selector:
+        number:
+          min: -3
+          max: 3
+          step: 0.5
+    delta_10_to_5:
+      name: Delta for 10°C to 5°C
+      selector:
+        number:
+          min: -3
+          max: 3
+          step: 0.5
+    delta_5_to_0:
+      name: Delta for 5°C to 0°C
+      selector:
+        number:
+          min: -3
+          max: 3
+          step: 0.5
+    delta_below_0:
+      name: Delta for <0°C
+      selector:
+        number:
+          min: -3
+          max: 3
+          step: 0.5
+    holiday_mode:
+      name: Holiday Mode
+      selector:
+        entity:
+          domain: input_boolean
+    home_occupancy:
+      name: Home Occupancy Sensor
+      selector:
+        entity:
+          domain: binary_sensor
+
+mode: restart
+
+trigger:
+  - platform: time_pattern
+    minutes: "/5"
+
+condition:
+  - condition: state
+    entity_id: !input holiday_mode
+    state: "off"
+  - condition: state
+    entity_id: !input home_occupancy
+    state: "on"
+  - condition: time
+    after: "06:30:00"
+    before: "22:30:00"
+
+action:
+  - choose:
+      - conditions:
+          - condition: numeric_state
+            entity_id: !input external_temperature
+            above: 15
+        sequence:
+          - service: climate.set_temperature
+            target:
+              entity_id: !input thermostat
+            data:
+              temperature: "{{ states(!input scheduled_setpoint) | float + !input delta_above_15 }}"
+      - conditions:
+          - condition: numeric_state
+            entity_id: !input external_temperature
+            above: 10
+            below: 15
+        sequence:
+          - service: climate.set_temperature
+            target:
+              entity_id: !input thermostat
+            data:
+              temperature: "{{ states(!input scheduled_setpoint) | float + !input delta_above_10 }}"
+      - conditions:
+          - condition: numeric_state
+            entity_id: !input external_temperature
+            above: 5
+            below: 10
+        sequence:
+          - service: climate.set_temperature
+            target:
+              entity_id: !input thermostat
+            data:
+              temperature: "{{ states(!input scheduled_setpoint) | float + !input delta_10_to_5 }}"
+      - conditions:
+          - condition: numeric_state
+            entity_id: !input external_temperature
+            above: 0
+            below: 5
+        sequence:
+          - service: climate.set_temperature
+            target:
+              entity_id: !input thermostat
+            data:
+              temperature: "{{ states(!input scheduled_setpoint) | float + !input delta_5_to_0 }}"
+      - conditions:
+          - condition: numeric_state
+            entity_id: !input external_temperature
+            below: 0
+        sequence:
+          - service: climate.set_temperature
+            target:
+              entity_id: !input thermostat
+            data:
+              temperature: "{{ states(!input scheduled_setpoint) | float + !input delta_below_0 }}"
+  - delay: "00:15:30"
+  - service: climate.set_temperature
+    target:
+      entity_id: !input thermostat
+    data:
+      temperature: "{{ states(!input scheduled_setpoint) | float }}"
