@@ -1,4 +1,4 @@
-  blueprint:
+blueprint:
   name: Room Thermostat Temperature Control
   description: >
     Adjust the thermostat setpoint based on external temperature, room schedules,
