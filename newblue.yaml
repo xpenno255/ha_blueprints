@@ -99,8 +99,8 @@ blueprint:
 
 mode: restart
   
-trigger_variables:
-  outside_temperature: !input external_temperature
+#trigger_variables:
+#  outside_temperature: !input external_temperature
 
 triggers:
   - platform: time_pattern
@@ -132,8 +132,8 @@ conditions:
       - wed
       - tue
       - mon
-  - platform: template
-    value_template: "{{ states(outside_temperature) | float < 15 }}"
+#  - platform: template
+#    value_template: "{{ states(outside_temperature) | float < 15 }}"
 
 actions:
   - variables:
