@@ -80,6 +80,9 @@ blueprint:
 #          domain: binary_sensor
 mode: restart
 
+trigger_variables:
+  outside_temperature: !input external_temperature
+
 trigger:
   - platform: time_pattern
     minutes: "/5"
@@ -87,9 +90,6 @@ trigger:
     entity_id: !input scheduled_setpoint
 
 condition:
-#  - variables:
-#      external_temperature_var: !input external_temperature
-#      current_temperature: "{{ states(external_temperature_var) | float }}"
   - condition: state
     entity_id: input_boolean.holiday_mode
     state: "off"
@@ -113,8 +113,8 @@ condition:
       - wed
       - tue
       - mon
-#  - condition: template
-#    value_template: "{{ states(current_temperature) | float < 10 }}"
+  - condition: template
+    value_template: "{{ states(outside_temperature) | float < 15 }}"
 
 action:
   - variables:
