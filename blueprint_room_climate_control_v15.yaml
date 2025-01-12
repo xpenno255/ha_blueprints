@@ -66,18 +66,31 @@ blueprint:
           min: -3
           max: 3
           step: 0.5
-#    holiday_mode:
-#      name: Holiday Mode Toggle
-#      description: Entity to represent Holiday Mode status.
-#      selector:
-#        entity:
-#          domain: input_boolean
-#    occupancy_sensor:
-#      name: Occupancy Sensor
-#      description: Sensor to check if the home is occupied.
-#      selector:
-#        entity:
-#          domain: binary_sensor
+
+    room_occupancy_sensor:
+      name: Room Occupancy Sensor
+      description: Select the room occupancy sensor.
+      selector:
+        entity:
+          domain: sensor
+          device_class: occupancy
+    unoccupied_offset:
+      name: Unoccupied Offset
+      description: How much should the room temperature decrease when the room is unoccupied.
+      selector:
+        number:
+          min: -5
+          max: 0
+          step: 0.5
+    unoccupied_duration:
+      name: Unoccupied Duration
+      description: How long in minutes should the room be marked as unoccupied before decreasing the temperature.
+      selector:
+        number:
+          min: 0
+          max: 59
+          step: 1
+
 mode: restart
 
 trigger_variables:
