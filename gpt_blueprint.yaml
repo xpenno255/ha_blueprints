@@ -2,7 +2,7 @@ blueprint:
   name: Room Thermostat Temperature Control
   description: >
     Adjust the thermostat setpoint based on external temperature, room schedules,
-    specific conditions, and room occupancy status with configurable occupancy detection.
+    specific conditions, and room occupancy status with configurable occupancy detection and time-based offsets.
   domain: automation
   input:
     thermostat_inputs:
@@ -80,14 +80,6 @@ blueprint:
           selector:
             entity:
               domain: binary_sensor
-        unoccupied_offset:
-          name: Unoccupied Offset
-          description: Offset applied to setpoint when the room is unoccupied.
-          selector:
-            number:
-              min: -5
-              max: 0
-              step: 0.5
         unoccupied_duration:
           name: Unoccupied Duration
           description: How long in minutes the room must be unoccupied before the offset is applied.
@@ -104,6 +96,54 @@ blueprint:
               min: 0
               max: 5
               step: 1
+        weekday_morning_offset:
+          name: Weekday Morning Offset
+          description: Unoccupied offset for weekdays during Morning (06:30 - 12:00).
+          selector:
+            number:
+              min: -5
+              max: 0
+              step: 0.5
+        weekday_afternoon_offset:
+          name: Weekday Afternoon Offset
+          description: Unoccupied offset for weekdays during Afternoon (12:00 - 17:00).
+          selector:
+            number:
+              min: -5
+              max: 0
+              step: 0.5
+        weekday_evening_offset:
+          name: Weekday Evening Offset
+          description: Unoccupied offset for weekdays during Evening (17:00 - 22:00).
+          selector:
+            number:
+              min: -5
+              max: 0
+              step: 0.5
+        weekend_morning_offset:
+          name: Weekend Morning Offset
+          description: Unoccupied offset for weekends during Morning (06:30 - 12:00).
+          selector:
+            number:
+              min: -5
+              max: 0
+              step: 0.5
+        weekend_afternoon_offset:
+          name: Weekend Afternoon Offset
+          description: Unoccupied offset for weekends during Afternoon (12:00 - 17:00).
+          selector:
+            number:
+              min: -5
+              max: 0
+              step: 0.5
+        weekend_evening_offset:
+          name: Weekend Evening Offset
+          description: Unoccupied offset for weekends during Evening (17:00 - 22:00).
+          selector:
+            number:
+              min: -5
+              max: 0
+              step: 0.5
 
 mode: restart
 
@@ -115,25 +155,58 @@ variables:
   external_temperature_var: !input external_temperature
   scheduled_setpoint_var: !input scheduled_setpoint
   occupancy_sensor: !input room_occupancy_sensor
-  unoccupied_offset: !input unoccupied_offset
   unoccupied_duration: !input unoccupied_duration
   reoccupied_duration: !input reoccupied_duration
+  weekday_morning_offset: !input weekday_morning_offset
+  weekday_afternoon_offset: !input weekday_afternoon_offset
+  weekday_evening_offset: !input weekday_evening_offset
+  weekend_morning_offset: !input weekend_morning_offset
+  weekend_afternoon_offset: !input weekend_afternoon_offset
+  weekend_evening_offset: !input weekend_evening_offset
   current_temperature: "{{ states(external_temperature_var) | float }}"
   scheduled_setpoint: "{{ states(scheduled_setpoint_var) | float }}"
-  delta_above_15: !input delta_above_15
-  delta_above_10: !input delta_above_10
-  delta_10_to_5: !input delta_10_to_5
-  delta_5_to_0: !input delta_5_to_0
-  delta_below_0: !input delta_below_0
+  is_weekend: "{{ now().weekday() in [5, 6] }}"
+  time_period: >
+    {% if now().hour >= 6 and now().minute >= 30 and now().hour < 12 %}
+      morning
+    {% elif now().hour >= 12 and now().hour < 17 %}
+      afternoon
+    {% elif now().hour >= 17 and now().hour < 22 %}
+      evening
+    {% else %}
+      none
+    {% endif %}
+  unoccupied_offset: >
+    {% if time_period == 'morning' %}
+      {% if is_weekend %}
+        {{ weekend_morning_offset }}
+      {% else %}
+        {{ weekday_morning_offset }}
+      {% endif %}
+    {% elif time_period == 'afternoon' %}
+      {% if is_weekend %}
+        {{ weekend_afternoon_offset }}
+      {% else %}
+        {{ weekday_afternoon_offset }}
+      {% endif %}
+    {% elif time_period == 'evening' %}
+      {% if is_weekend %}
+        {{ weekend_evening_offset }}
+      {% else %}
+        {{ weekday_evening_offset }}
+      {% endif %}
+    {% else %}
+      0
+    {% endif %}
   is_unoccupied: >
     {% if is_state(occupancy_sensor, 'off') and 
        (as_timestamp(now()) - as_timestamp(states[occupancy_sensor].last_changed)) / 60 >= unoccupied_duration %}
-       true
+      true
     {% elif is_state(occupancy_sensor, 'on') and 
          (as_timestamp(now()) - as_timestamp(states[occupancy_sensor].last_changed)) / 60 < reoccupied_duration %}
-       true
+      true
     {% else %}
-       false
+      false
     {% endif %}
 
 action:
@@ -155,7 +228,7 @@ action:
               hvac_mode: "heat"
       - conditions:
           - condition: template
-            value_template: "{{ 10 < current_temperature <= 15 }}"
+            value_template: "{{ current_temperature > 10 and current_temperature <= 15 }}"
         sequence:
           - service: climate.set_temperature
             target:
@@ -170,7 +243,7 @@ action:
               hvac_mode: "heat"
       - conditions:
           - condition: template
-            value_template: "{{ 5 < current_temperature <= 10 }}"
+            value_template: "{{ current_temperature > 5 and current_temperature <= 10 }}"
         sequence:
           - service: climate.set_temperature
             target:
@@ -185,7 +258,7 @@ action:
               hvac_mode: "heat"
       - conditions:
           - condition: template
-            value_template: "{{ 0 < current_temperature <= 5 }}"
+            value_template: "{{ current_temperature > 0 and current_temperature <= 5 }}"
         sequence:
           - service: climate.set_temperature
             target:
