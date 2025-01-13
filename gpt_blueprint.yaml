@@ -2,7 +2,7 @@ blueprint:
   name: Room Thermostat Temperature Control
   description: >
     Adjust the thermostat setpoint based on external temperature, room schedules,
-    and specific conditions.
+    specific conditions, and room occupancy status.
   domain: automation
   input:
     thermostat_inputs:
@@ -82,7 +82,7 @@ blueprint:
               domain: binary_sensor
         unoccupied_offset:
           name: Unoccupied Offset
-          description: How much should the room temperature decrease when the room is unoccupied.
+          description: Offset applied to setpoint when the room is unoccupied.
           selector:
             number:
               min: -5
@@ -90,7 +90,7 @@ blueprint:
               step: 0.5
         unoccupied_duration:
           name: Unoccupied Duration
-          description: How long in minutes should the room be marked as unoccupied before decreasing the temperature.
+          description: How long in minutes the room must be unoccupied before the offset is applied.
           selector:
             number:
               min: 0
@@ -106,6 +106,9 @@ trigger:
 variables:
   external_temperature_var: !input external_temperature
   scheduled_setpoint_var: !input scheduled_setpoint
+  occupancy_sensor: !input room_occupancy_sensor
+  unoccupied_offset: !input unoccupied_offset
+  unoccupied_duration: !input unoccupied_duration
   current_temperature: "{{ states(external_temperature_var) | float }}"
   scheduled_setpoint: "{{ states(scheduled_setpoint_var) | float }}"
   delta_above_15: !input delta_above_15
@@ -113,31 +116,9 @@ variables:
   delta_10_to_5: !input delta_10_to_5
   delta_5_to_0: !input delta_5_to_0
   delta_below_0: !input delta_below_0
-
-condition:
-  - condition: state
-    entity_id: input_boolean.holiday_mode
-    state: "off"
-  - condition: not
-    conditions:
-      - condition: state
-        entity_id: binary_sensor.home_occupancy
-        state: "off"
-        for:
-          hours: 0
-          minutes: 30
-          seconds: 0
-  - condition: time
-    after: "06:30:00"
-    before: "22:30:00"
-    weekday:
-      - sun
-      - sat
-      - fri
-      - thu
-      - wed
-      - tue
-      - mon
+  is_unoccupied: >
+    {{ is_state(occupancy_sensor, 'off') and 
+       (as_timestamp(now()) - as_timestamp(states[occupancy_sensor].last_changed)) / 60 >= unoccupied_duration }}
 
 action:
   - choose:
@@ -149,7 +130,13 @@ action:
             target:
               entity_id: !input thermostat
             data:
-              temperature: "{{ scheduled_setpoint + delta_above_15 }}"
+              temperature: >
+                {% if is_unoccupied %}
+                  {{ scheduled_setpoint + delta_above_15 + unoccupied_offset }}
+                {% else %}
+                  {{ scheduled_setpoint + delta_above_15 }}
+                {% endif %}
+              hvac_mode: "heat"
       - conditions:
           - condition: template
             value_template: "{{ 10 < current_temperature <= 15 }}"
@@ -158,7 +145,13 @@ action:
             target:
               entity_id: !input thermostat
             data:
-              temperature: "{{ scheduled_setpoint + delta_above_10 }}"
+              temperature: >
+                {% if is_unoccupied %}
+                  {{ scheduled_setpoint + delta_above_10 + unoccupied_offset }}
+                {% else %}
+                  {{ scheduled_setpoint + delta_above_10 }}
+                {% endif %}
+              hvac_mode: "heat"
       - conditions:
           - condition: template
             value_template: "{{ 5 < current_temperature <= 10 }}"
@@ -167,7 +160,13 @@ action:
             target:
               entity_id: !input thermostat
             data:
-              temperature: "{{ scheduled_setpoint + delta_10_to_5 }}"
+              temperature: >
+                {% if is_unoccupied %}
+                  {{ scheduled_setpoint + delta_10_to_5 + unoccupied_offset }}
+                {% else %}
+                  {{ scheduled_setpoint + delta_10_to_5 }}
+                {% endif %}
+              hvac_mode: "heat"
       - conditions:
           - condition: template
             value_template: "{{ 0 < current_temperature <= 5 }}"
@@ -176,7 +175,13 @@ action:
             target:
               entity_id: !input thermostat
             data:
-              temperature: "{{ scheduled_setpoint + delta_5_to_0 }}"
+              temperature: >
+                {% if is_unoccupied %}
+                  {{ scheduled_setpoint + delta_5_to_0 + unoccupied_offset }}
+                {% else %}
+                  {{ scheduled_setpoint + delta_5_to_0 }}
+                {% endif %}
+              hvac_mode: "heat"
       - conditions:
           - condition: template
             value_template: "{{ current_temperature <= 0 }}"
@@ -185,7 +190,13 @@ action:
             target:
               entity_id: !input thermostat
             data:
-              temperature: "{{ scheduled_setpoint + delta_below_0 }}"
+              temperature: >
+                {% if is_unoccupied %}
+                  {{ scheduled_setpoint + delta_below_0 + unoccupied_offset }}
+                {% else %}
+                  {{ scheduled_setpoint + delta_below_0 }}
+                {% endif %}
+              hvac_mode: "heat"
   - delay: "00:15:30"
   - service: climate.set_temperature
     target:
