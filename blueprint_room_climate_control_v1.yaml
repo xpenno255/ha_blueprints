@@ -298,10 +298,10 @@ action:
               temperature: >
                 {{ scheduled_setpoint + delta_below_0 + (unoccupied_offset if is_unoccupied else 0) }}
               hvac_mode: "heat"
-  - service: logger.log
-    data:
-      message: "Resetting thermostat {{ thermostat }} to scheduled setpoint: {{ scheduled_setpoint }}"
-      level: info
+#  - service: logger.log
+#    data:
+#      message: "Resetting thermostat {{ thermostat }} to scheduled setpoint: {{ scheduled_setpoint }}"
+#      level: info
   - delay: "00:10:00"
   - service: climate.set_temperature
     target:
