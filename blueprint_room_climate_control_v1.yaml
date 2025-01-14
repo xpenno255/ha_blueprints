@@ -106,7 +106,7 @@ blueprint:
               step: 0.5
         weekday_afternoon_offset:
           name: Weekday Afternoon Offset
-          description: Unoccupied offset for weekdays during Afternoon (12:00 - 17:00).
+          description: Unoccupied offset for weekdays during Afternoon (12:00 - 16:30).
           selector:
             number:
               min: -5
@@ -114,7 +114,7 @@ blueprint:
               step: 0.5
         weekday_evening_offset:
           name: Weekday Evening Offset
-          description: Unoccupied offset for weekdays during Evening (17:00 - 22:00).
+          description: Unoccupied offset for weekdays during Evening (16:30 - 22:00).
           selector:
             number:
               min: -5
@@ -130,7 +130,7 @@ blueprint:
               step: 0.5
         weekend_afternoon_offset:
           name: Weekend Afternoon Offset
-          description: Unoccupied offset for weekends during Afternoon (12:00 - 17:00).
+          description: Unoccupied offset for weekends during Afternoon (12:00 - 16:30).
           selector:
             number:
               min: -5
@@ -138,7 +138,7 @@ blueprint:
               step: 0.5
         weekend_evening_offset:
           name: Weekend Evening Offset
-          description: Unoccupied offset for weekends during Evening (17:00 - 22:00).
+          description: Unoccupied offset for weekends during Evening (16:60 - 22:00).
           selector:
             number:
               min: -5
