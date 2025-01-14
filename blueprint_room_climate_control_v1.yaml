@@ -38,6 +38,7 @@ blueprint:
               min: -3
               max: 3
               step: 0.5
+          default: 0.5
         delta_above_10:
           name: Delta for >10°C
           description: Adjustment to setpoint when external temperature is between 10°C and 15°C.
