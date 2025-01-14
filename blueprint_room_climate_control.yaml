@@ -1,5 +1,5 @@
 blueprint:
-  name: Room Thermostat Temperature Control
+  name: Room Thermostat Temperature Control v1.0
   description: >
     Adjust the thermostat setpoint based on external temperature, room schedules,
     specific conditions, and room occupancy status with configurable occupancy detection and time-based offsets.
