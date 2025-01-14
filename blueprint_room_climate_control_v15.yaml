@@ -154,6 +154,11 @@ trigger:
 variables:
   external_temperature_var: !input external_temperature
   scheduled_setpoint_var: !input scheduled_setpoint
+  delta_above_15: !input delta_above_15
+  delta_above_10: !input delta_above_10
+  delta_10_to_5: !input delta_10_to_5
+  delta_5_to_0: !input delta_5_to_0
+  delta_below_0: !input delta_below_0
   occupancy_sensor: !input room_occupancy_sensor
   unoccupied_duration: !input unoccupied_duration
   reoccupied_duration: !input reoccupied_duration
