@@ -230,7 +230,7 @@ variables:
 
 action:
   - condition: time
-    before: "22:00:00"
+    before: "22:30:00"
     after: "06:30:00"
   - choose:
       - conditions:
