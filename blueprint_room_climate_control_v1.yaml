@@ -30,6 +30,7 @@ blueprint:
             entity:
               domain: sensor
               device_class: temperature
+          default: sensor.accuweather_home_wind_chill_temperature
         delta_above_15:
           name: Delta for >15°C
           description: Adjustment to setpoint when external temperature is above 15°C.
@@ -47,6 +48,7 @@ blueprint:
               min: -3
               max: 3
               step: 0.5
+          default: 1
         delta_10_to_5:
           name: Delta for 10°C to 5°C
           description: Adjustment to setpoint when external temperature is between 10°C and 5°C.
@@ -55,6 +57,7 @@ blueprint:
               min: -3
               max: 3
               step: 0.5
+          default: 1.5
         delta_5_to_0:
           name: Delta for 5°C to 0°C
           description: Adjustment to setpoint when external temperature is between 5°C and 0°C.
@@ -63,6 +66,7 @@ blueprint:
               min: -3
               max: 3
               step: 0.5
+          default: 2
         delta_below_0:
           name: Delta for <0°C
           description: Adjustment to setpoint when external temperature is below 0°C.
@@ -71,6 +75,7 @@ blueprint:
               min: -3
               max: 3
               step: 0.5
+          default: 2.5
     occupancy_inputs:
       name: '# Occupancy Inputs'
       collapsed: false
@@ -89,6 +94,7 @@ blueprint:
               min: 0
               max: 59
               step: 1
+          default: 10
         reoccupied_duration:
           name: Reoccupied Duration
           description: How long in minutes the room must remain occupied to cancel the unoccupied state.
@@ -97,6 +103,7 @@ blueprint:
               min: 0
               max: 5
               step: 1
+          default: 2
         weekday_morning_offset:
           name: Weekday Morning Offset
           description: Unoccupied offset for weekdays during Morning (06:30 - 12:00).
@@ -105,6 +112,7 @@ blueprint:
               min: -5
               max: 0
               step: 0.5
+          default: 0.5
         weekday_afternoon_offset:
           name: Weekday Afternoon Offset
           description: Unoccupied offset for weekdays during Afternoon (12:00 - 16:30).
@@ -113,6 +121,7 @@ blueprint:
               min: -5
               max: 0
               step: 0.5
+          default: 0.5
         weekday_evening_offset:
           name: Weekday Evening Offset
           description: Unoccupied offset for weekdays during Evening (16:30 - 22:00).
@@ -121,6 +130,7 @@ blueprint:
               min: -5
               max: 0
               step: 0.5
+          default: 0.5
         weekend_morning_offset:
           name: Weekend Morning Offset
           description: Unoccupied offset for weekends during Morning (06:30 - 12:00).
@@ -129,6 +139,7 @@ blueprint:
               min: -5
               max: 0
               step: 0.5
+          default: 0.5
         weekend_afternoon_offset:
           name: Weekend Afternoon Offset
           description: Unoccupied offset for weekends during Afternoon (12:00 - 16:30).
@@ -137,6 +148,7 @@ blueprint:
               min: -5
               max: 0
               step: 0.5
+          default: 0.5
         weekend_evening_offset:
           name: Weekend Evening Offset
           description: Unoccupied offset for weekends during Evening (16:60 - 22:00).
@@ -145,6 +157,7 @@ blueprint:
               min: -5
               max: 0
               step: 0.5
+          default: 0.5
 
 mode: restart
 
