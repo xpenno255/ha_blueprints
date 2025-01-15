@@ -1,5 +1,5 @@
 blueprint:
-  name: Room Thermostat Temperature Control v2.6
+  name: Room Thermostat Temperature Control v2.7
   description: >
     Adjust the thermostat setpoint based on external temperature, room schedules,
     specific conditions, and room occupancy status with configurable occupancy detection and time-based offsets.
@@ -263,6 +263,14 @@ action:
               temperature: >
                 {{ scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied else 0) }}
               hvac_mode: "heat"
+          - service: system_log.write
+            data:
+              message: >
+                Calculated setpoint for thermostat {{ thermostat }}:
+                {{ scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied else 0) }}
+                (External Temp: {{ current_temperature }}°C)
+                (scheduled setpoint: {{ scheduled_setpoint }}°C)
+              level: warning              
       - conditions:
           - condition: template
             value_template: "{{ current_temperature > 10 and current_temperature <= 15 }}"
@@ -280,7 +288,7 @@ action:
             data:
               message: >
                 Calculated setpoint for thermostat {{ thermostat }}:
-                {{ scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied else 0) }}
+                {{ scheduled_setpoint + delta_above_10 + (unoccupied_offset if is_unoccupied else 0) }}
                 (External Temp: {{ current_temperature }}°C)
                 (scheduled setpoint: {{ scheduled_setpoint }}°C)
               level: warning
@@ -301,7 +309,7 @@ action:
             data:
               message: >
                 Calculated setpoint for thermostat {{ thermostat }}:
-                {{ scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied else 0) }}
+                {{ scheduled_setpoint + delta_10_to_5 + (unoccupied_offset if is_unoccupied else 0) }}
                 (External Temp: {{ current_temperature }}°C)
                 (scheduled setpoint: {{ scheduled_setpoint }}°C)
               level: warning
@@ -318,6 +326,14 @@ action:
               temperature: >
                 {{ scheduled_setpoint + delta_5_to_0 + (unoccupied_offset if is_unoccupied else 0) }}
               hvac_mode: "heat"
+           - service: system_log.write
+            data:
+              message: >
+                Calculated setpoint for thermostat {{ thermostat }}:
+                {{ scheduled_setpoint + delta_5_to_0 + (unoccupied_offset if is_unoccupied else 0) }}
+                (External Temp: {{ current_temperature }}°C)
+                (scheduled setpoint: {{ scheduled_setpoint }}°C)
+              level: warning             
       - conditions:
           - condition: template
             value_template: "{{ current_temperature <= 0 }}"
@@ -331,7 +347,14 @@ action:
               temperature: >
                 {{ scheduled_setpoint + delta_below_0 + (unoccupied_offset if is_unoccupied else 0) }}
               hvac_mode: "heat"
-
+          - service: system_log.write
+            data:
+              message: >
+                Calculated setpoint for thermostat {{ thermostat }}:
+                {{ scheduled_setpoint + delta_below_0 + (unoccupied_offset if is_unoccupied else 0) }}
+                (External Temp: {{ current_temperature }}°C)
+                (scheduled setpoint: {{ scheduled_setpoint }}°C)
+              level: warning
   - delay: "00:10:00"
   - service: climate.set_temperature
     target:
