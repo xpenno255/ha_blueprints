@@ -232,11 +232,9 @@ variables:
       0
     {% endif %}
   is_unoccupied: >
-    {% if is_state(occupancy_sensor, 'off') and 
-       (as_timestamp(now()) - as_timestamp(states[occupancy_sensor].last_changed)) / 60 >= unoccupied_duration %}
-      true
-    {% elif is_state(occupancy_sensor, 'on') and 
-         (as_timestamp(now()) - as_timestamp(states[occupancy_sensor].last_changed)) / 60 < reoccupied_duration %}
+    {% if states[occupancy_sensor] is not none and 
+         is_state(occupancy_sensor, 'off') and 
+         (as_timestamp(now()) - (as_timestamp(states[occupancy_sensor].last_changed) or as_timestamp(now()))) / 60 >= unoccupied_duration %}
       true
     {% else %}
       false
