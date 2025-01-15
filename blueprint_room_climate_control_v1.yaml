@@ -1,5 +1,5 @@
 blueprint:
-  name: Room Thermostat Temperature Control v2.4
+  name: Room Thermostat Temperature Control v2.5
   description: >
     Adjust the thermostat setpoint based on external temperature, room schedules,
     specific conditions, and room occupancy status with configurable occupancy detection and time-based offsets.
@@ -276,9 +276,14 @@ action:
               temperature: >
                 {{ scheduled_setpoint + delta_above_10 + (unoccupied_offset if is_unoccupied else 0) }}
               hvac_mode: "heat"
-          - data:
-              message: "Calculated setpoint for thermostat {{ thermostat }}: {{ scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied else 0) }} (External Temp: {{ current_temperature }}°C) (scheduled setpoint: {{ scheduled_setpoint }}°C)"
-            level: warning
+          - service: system_log.write
+            data:
+              message: >
+                Calculated setpoint for thermostat {{ thermostat }}:
+                {{ scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied else 0) }}
+                (External Temp: {{ current_temperature }}°C)
+                (scheduled setpoint: {{ scheduled_setpoint }}°C)
+              level: warning
       - conditions:
           - condition: template
             value_template: "{{ current_temperature > 5 and current_temperature <= 10 }}"
