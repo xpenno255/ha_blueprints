@@ -263,6 +263,10 @@ action:
               temperature: >
                 {{ scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied else 0) }}
               hvac_mode: "heat"
+          - service: logger.log
+            data:
+              message: "Calculated setpoint for thermostat {{ thermostat }}: {{ scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied else 0) }} (External Temp: {{ current_temperature }}°C) (scheduled setpoint: {{ scheduled_setpoint }}°C)"
+            level: info
       - conditions:
           - condition: template
             value_template: "{{ current_temperature > 10 and current_temperature <= 15 }}"
@@ -276,6 +280,10 @@ action:
               temperature: >
                 {{ scheduled_setpoint + delta_above_10 + (unoccupied_offset if is_unoccupied else 0) }}
               hvac_mode: "heat"
+          - service: logger.log
+            data:
+              message: "Calculated setpoint for thermostat {{ thermostat }}: {{ scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied else 0) }} (External Temp: {{ current_temperature }}°C) (scheduled setpoint: {{ scheduled_setpoint }}°C)"
+            level: info              
       - conditions:
           - condition: template
             value_template: "{{ current_temperature > 5 and current_temperature <= 10 }}"
@@ -289,6 +297,10 @@ action:
               temperature: >
                 {{ scheduled_setpoint + delta_10_to_5 + (unoccupied_offset if is_unoccupied else 0) }}
               hvac_mode: "heat"
+          - service: logger.log
+            data:
+              message: "Calculated setpoint for thermostat {{ thermostat }}: {{ scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied else 0) }} (External Temp: {{ current_temperature }}°C) (scheduled setpoint: {{ scheduled_setpoint }}°C)"
+            level: info              
       - conditions:
           - condition: template
             value_template: "{{ current_temperature > 0 and current_temperature <= 5 }}"
@@ -302,6 +314,10 @@ action:
               temperature: >
                 {{ scheduled_setpoint + delta_5_to_0 + (unoccupied_offset if is_unoccupied else 0) }}
               hvac_mode: "heat"
+          - service: logger.log
+            data:
+              message: "Calculated setpoint for thermostat {{ thermostat }}: {{ scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied else 0) }} (External Temp: {{ current_temperature }}°C) (scheduled setpoint: {{ scheduled_setpoint }}°C)"
+            level: info              
       - conditions:
           - condition: template
             value_template: "{{ current_temperature <= 0 }}"
@@ -315,7 +331,10 @@ action:
               temperature: >
                 {{ scheduled_setpoint + delta_below_0 + (unoccupied_offset if is_unoccupied else 0) }}
               hvac_mode: "heat"
-
+          - service: logger.log
+            data:
+              message: "Calculated setpoint for thermostat {{ thermostat }}: {{ scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied else 0) }} (External Temp: {{ current_temperature }}°C) (scheduled setpoint: {{ scheduled_setpoint }}°C)"
+            level: info              
   - delay: "00:10:00"
   - service: climate.set_temperature
     target:
