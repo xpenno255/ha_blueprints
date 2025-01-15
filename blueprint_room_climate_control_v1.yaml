@@ -326,7 +326,7 @@ action:
               temperature: >
                 {{ scheduled_setpoint + delta_5_to_0 + (unoccupied_offset if is_unoccupied else 0) }}
               hvac_mode: "heat"
-           - service: system_log.write
+          - service: system_log.write
             data:
               message: >
                 Calculated setpoint for thermostat {{ thermostat }}:
