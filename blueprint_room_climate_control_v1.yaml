@@ -1,5 +1,5 @@
 blueprint:
-  name: Room Thermostat Temperature Control v2.9
+  name: Room Thermostat Temperature Control v2.10
   description: >
     Adjust the thermostat setpoint based on external temperature, room schedules,
     specific conditions, and room occupancy status with configurable occupancy detection and time-based offsets.
@@ -199,6 +199,7 @@ variables:
   current_temperature: "{{ states(external_temperature_var) | float }}"
   scheduled_setpoint: "{{ states(scheduled_setpoint_var) | float }}"
   thermostat_name: "{{ state_attr(thermostat, 'friendly_name') }}"
+  thermostat_currentsetpoint: "{{ state_attr(thermostat, 'temperature') }}"
   is_weekend: "{{ now().weekday() in [5, 6] }}"
   time_period: >
     {% if now().hour >= 6 and now().minute >= 30 and now().hour < 12 %}
@@ -266,7 +267,7 @@ action:
             data:
               message: >
                 Calculated setpoint for thermostat {{ thermostat_name }}:
-                {{ scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied else 0) }}°C
+                {{ scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied else 0) }}°C from {{ thermostat_currentsetpoint }}°C
                 (External Temp: {{ current_temperature }}°C)
                 (scheduled setpoint: {{ scheduled_setpoint }}°C)
                 (Room Unoccupied: {{ is_unoccupied }})
@@ -288,7 +289,7 @@ action:
             data:
               message: >
                 Calculated setpoint for thermostat {{ thermostat_name }}:
-                {{ scheduled_setpoint + delta_above_10 + (unoccupied_offset if is_unoccupied else 0) }}°C
+                {{ scheduled_setpoint + delta_above_10 + (unoccupied_offset if is_unoccupied else 0) }}°C from {{ thermostat_currentsetpoint }}°C
                 (External Temp: {{ current_temperature }}°C)
                 (scheduled setpoint: {{ scheduled_setpoint }}°C)
                 (Room Unoccupied: {{ is_unoccupied }})
@@ -310,7 +311,7 @@ action:
             data:
               message: >
                 Calculated setpoint for thermostat {{ thermostat_name }}:
-                {{ scheduled_setpoint + delta_10_to_5 + (unoccupied_offset if is_unoccupied else 0) }}°C
+                {{ scheduled_setpoint + delta_10_to_5 + (unoccupied_offset if is_unoccupied else 0) }}°C from {{ thermostat_currentsetpoint }}°C
                 (External Temp: {{ current_temperature }}°C)
                 (scheduled setpoint: {{ scheduled_setpoint }}°C)
                 (Room Unoccupied: {{ is_unoccupied }})
@@ -332,7 +333,7 @@ action:
             data:
               message: >
                 Calculated setpoint for thermostat {{ thermostat_name }}:
-                {{ scheduled_setpoint + delta_5_to_0 + (unoccupied_offset if is_unoccupied else 0) }}°C
+                {{ scheduled_setpoint + delta_5_to_0 + (unoccupied_offset if is_unoccupied else 0) }}°C from {{ thermostat_currentsetpoint }}°C
                 (External Temp: {{ current_temperature }}°C)
                 (scheduled setpoint: {{ scheduled_setpoint }}°C)
                 (Room Unoccupied: {{ is_unoccupied }})
@@ -354,7 +355,7 @@ action:
             data:
               message: >
                 Calculated setpoint for thermostat {{ thermostat_name }}:
-                {{ scheduled_setpoint + delta_below_0 + (unoccupied_offset if is_unoccupied else 0) }}°C
+                {{ scheduled_setpoint + delta_below_0 + (unoccupied_offset if is_unoccupied else 0) }}°C from {{ thermostat_currentsetpoint }}°C
                 (External Temp: {{ current_temperature }}°C)
                 (scheduled setpoint: {{ scheduled_setpoint }}°C)
                 (Room Unoccupied: {{ is_unoccupied }})
