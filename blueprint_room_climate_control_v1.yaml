@@ -1,5 +1,5 @@
 blueprint:
-  name: Room Thermostat Temperature Control v2.11
+  name: Room Thermostat Temperature Control v2.12
   description: >
     Adjust the thermostat setpoint based on external temperature, room schedules,
     specific conditions, and room occupancy status with configurable occupancy detection and time-based offsets.
@@ -151,7 +151,7 @@ blueprint:
           default: -0.5
         weekend_evening_offset:
           name: Weekend Evening Offset
-          description: Unoccupied offset for weekends during Evening (16:60 - 22:00).
+          description: Unoccupied offset for weekends during Evening (16:30 - 22:00).
           selector:
             number:
               min: -5
@@ -358,6 +358,7 @@ action:
                 {{ scheduled_setpoint + delta_below_0 + (unoccupied_offset if is_unoccupied else 0) }}°C from {{ thermostat_currentsetpoint }}°C
                 (External Temp: {{ current_temperature }}°C)
                 (scheduled setpoint: {{ scheduled_setpoint }}°C)
+                (Unoccupied Offset: {{ unoccupied_offset if is_unoccupied else 0 }}°C)
                 (Room Unoccupied: {{ is_unoccupied }})
               level: warning
   - delay: "00:10:00"
