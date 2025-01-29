@@ -349,7 +349,7 @@ action:
               entity_id: !input thermostat
             data:
               temperature: >
-                {{ scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied | string == 'true' else 0) }}
+                {{ scheduled_setpoint + delta_below_0 + (unoccupied_offset if is_unoccupied | string == 'true' else 0) }}
               hvac_mode: "heat"
           - service: system_log.write
             data:
@@ -361,7 +361,7 @@ action:
                 (delta: {{ delta_below_0 }}°C)
                 (Unoccupied Offset: {{ unoccupied_offset if is_unoccupied else 0 }}°C)
                 (Room Unoccupied: {{ is_unoccupied }})
-                (new setpoint calc: {{ scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied | string == 'true' else 0) }}
+                (new setpoint calc: {{ scheduled_setpoint + delta_below_0 + (unoccupied_offset if is_unoccupied | string == 'true' else 0) }}
               level: warning
   - delay: "00:10:00"
   - service: climate.set_temperature
