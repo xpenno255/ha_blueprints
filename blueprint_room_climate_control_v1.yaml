@@ -1,5 +1,5 @@
 blueprint:
-  name: Room Thermostat Temperature Control v2.20
+  name: Room Thermostat Temperature Control v2.21
   description: >
     Adjust the thermostat setpoint based on external temperature, room schedules,
     specific conditions, and room occupancy status with configurable occupancy detection and time-based offsets.
@@ -244,10 +244,9 @@ variables:
   automation_delay: !input automation_delay
 
 condition:
-  conditions:
-    - condition: state
-      entity_id: input_boolean.holiday_mode
-      state: "off"
+  - condition: state
+    entity_id: input_boolean.holiday_mode
+    state: "off"
 
 action:
   - condition: time
