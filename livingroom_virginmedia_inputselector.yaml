@@ -1,5 +1,5 @@
 blueprint:
-  name: TV — LR (LG webOS) • Virgin Channel + Sonos Volume (fixed TV input, global delays)
+  name: Living Room TV Virgin Media Input Selector v1.0
   description: >
     Powers on Virgin Media box and LG webOS TV, tunes a Virgin channel (chosen once per script),
     then switches the TV to the fixed input "Virgin(West Midlands) Set-Top Box" and sets Sonos volume.
@@ -17,7 +17,7 @@ blueprint:
     volume_level:
       name: Sonos volume (0.00–1.00, per script)
       description: Target volume for media_player.living_room_sonos
-      default: 0.25
+      default: 0.35
       selector:
         number:
           min: 0
