@@ -1,0 +1,132 @@
+blueprint:
+  name: Living Room TV Shield Input Selector v1.0
+  description: >
+    Creates a script (one per combo) that powers/wakes Nvidia Shield and LG webOS TV,
+    launches a Shield app/source, then switches the TV to the chosen input.
+    TV input comes from input_select.living_room_tv_input_list.
+    Shield app/source comes from input_select.shield_input_list.
+  domain: script
+
+  input:
+    tv_input:
+      name: TV input (choose once)
+      selector:
+        state:
+          entity_id: input_select.living_room_tv_input_list
+
+    shield_source:
+      name: Shield app/source (choose once)
+      selector:
+        state:
+          entity_id: input_select.shield_input_list
+
+mode: restart
+max_exceeded: silent
+
+# -------- Global constants (edit here to affect ALL scripts using this blueprint) --------
+variables:
+  tv: media_player.lg_webos_smart_tv
+  shield: media_player.android_tv_192_168_1_41
+
+  # TV timings
+  tv_power_on_timeout: 90
+  tv_source_list_timeout: 45
+  tv_settle_delay: 3
+
+  # Shield timings
+  shield_power_on_timeout: 30
+  shield_settle_delay: 1
+
+  # Fixed per-script selections
+  desired_input: !input tv_input
+  desired_shield_source: !input shield_source
+
+  # TV input matching helpers (tolerant of case/spacing)
+  source_list: "{{ state_attr(tv, 'source_list') or [] }}"
+  desired_norm: "{{ (desired_input or '') | string | lower | trim }}"
+  source_list_norm: "{{ source_list | map('string') | map('lower') | list }}"
+  matched_source: >
+    {% set d = desired_norm %}
+    {% set cand = source_list | list %}
+    {% set norm = source_list_norm %}
+    {% set idx = (norm.index(d) if d in norm else none) %}
+    {% if idx is not none %}
+      {{ cand[idx] }}
+    {% else %}
+      {% set starts = [] %}
+      {% for i in range(norm|length) %}
+        {% if norm[i].startswith(d) %}{% set _ = starts.append(i) %}{% endif %}
+      {% endfor %}
+      {% if starts %}{{ cand[starts[0]] }}
+      {% else %}
+        {% set contains = [] %}
+        {% for i in range(norm|length) %}
+          {% if d in norm[i] %}{% set _ = contains.append(i) %}{% endif %}
+        {% endfor %}
+        {% if contains %}{{ cand[contains[0]] }}
+        {% else %}{{ desired_input }}
+        {% endif %}
+      {% endif %}
+    {% endif %}
+
+sequence:
+  # 1) Ensure Shield is on, then launch selected app/source
+  - alias: Power on Shield if off
+    if:
+      - condition: state
+        entity_id: media_player.android_tv_192_168_1_41
+        state: "off"
+    then:
+      - service: media_player.turn_on
+        target:
+          entity_id: media_player.android_tv_192_168_1_41
+      - wait_template: "{{ states(shield) not in ['off','unavailable','unknown'] }}"
+        timeout: "{{ shield_power_on_timeout }}"
+      - delay:
+          seconds: "{{ shield_settle_delay }}"
+
+  - alias: Launch Shield app/source
+    service: media_player.select_source
+    target:
+      entity_id: media_player.android_tv_192_168_1_41
+    data:
+      source: "{{ desired_shield_source }}"
+
+  # 2) Power on TV if needed
+  - alias: Power on TV if off
+    if:
+      - condition: state
+        entity_id: media_player.lg_webos_smart_tv
+        state: "off"
+    then:
+      - service: media_player.turn_on
+        target:
+          entity_id: media_player.lg_webos_smart_tv
+      - wait_template: "{{ states(tv) not in ['off','unavailable','unknown'] }}"
+        timeout: "{{ tv_power_on_timeout }}"
+      - delay:
+          seconds: "{{ tv_settle_delay }}"
+
+  # 3) (Optional) wait for TV source list
+  - alias: Wait for TV sources (optional)
+    wait_template: >
+      {{ (state_attr(tv, 'source_list') or []) | count > 0
+         or states(tv) not in ['off','unavailable','unknown'] }}
+    timeout: "{{ tv_source_list_timeout }}"
+    continue_on_timeout: true
+
+  # 4) Switch TV input
+  - alias: Switch TV to fixed input
+    service: media_player.select_source
+    target:
+      entity_id: media_player.lg_webos_smart_tv
+    data:
+      source: "{{ matched_source }}"
+
+  - service: logbook.log
+    data:
+      name: "TV+Shield"
+      message: >
+        TV → '{{ matched_source }}' (requested '{{ desired_input }}').
+        Shield source: '{{ desired_shield_source }}'.
+      entity_id: media_player.lg_webos_smart_tv
