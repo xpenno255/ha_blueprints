@@ -1,9 +1,11 @@
 blueprint:
-  name: TV — Select Input v1.3
+  name: TV — Select Input v1.4
   description: >
     Creates a script (one per input) for media_player.lg_webos_smart_tv.
-    You choose the input once (from input_select.living_room_tv_input_list) when creating the script.
-    Power-on behaviour and timings are hard-coded here so changing this blueprint updates all scripts.
+    Choose the TV input once (from input_select.living_room_tv_input_list) and set a fixed
+    Sonos Playbar volume for media_player.living_room_sonos. Power-on timing is hard-coded
+    here so updating the blueprint updates all scripts.
+
   domain: script
 
   input:
@@ -14,20 +16,32 @@ blueprint:
         state:
           entity_id: input_select.living_room_tv_input_list
 
+    volume_level:
+      name: Sonos volume (0.00–1.00)
+      description: Per-script target volume for media_player.living_room_sonos.
+      default: 0.25
+      selector:
+        number:
+          min: 0
+          max: 1
+          step: 0.01
+          mode: slider
+
 mode: restart
 max_exceeded: silent
 
-# -------- Tunable constants (edit these to change behaviour for ALL scripts) --------
+# -------- Tunable constants (edit here to affect ALL scripts using this blueprint) --------
 variables:
   tv: media_player.lg_webos_smart_tv
+  sonos: media_player.living_room_sonos
 
-  # Global timing configuration
-  power_on_timeout: 10        # seconds to wait for TV to become responsive after power on
-  source_list_timeout: 3     # seconds to wait for source_list to appear (continues on timeout)
+  power_on_timeout: 90        # seconds to wait for TV to become responsive after power on
+  source_list_timeout: 45     # seconds to wait for source_list to appear (continues on timeout)
   settle_delay: 3             # extra delay after power-on before switching input
 
-  # Fixed input chosen at creation time
+  # Fixed per-script inputs
   desired_input: !input desired_input
+  volume_level: !input volume_level
 
   # Matching helpers (be tolerant of minor name differences)
   source_list: "{{ state_attr(tv, 'source_list') or [] }}"
@@ -61,7 +75,7 @@ variables:
     {% endif %}
 
 sequence:
-  - alias: Power on if off
+  - alias: Power on TV if off
     if:
       - condition: state
         entity_id: media_player.lg_webos_smart_tv
@@ -90,8 +104,18 @@ sequence:
     data:
       source: "{{ matched_source }}"
 
+  - alias: Set Sonos Playbar volume
+    service: media_player.volume_set
+    target:
+      entity_id: media_player.living_room_sonos
+    data:
+      volume_level: "{{ volume_level | float }}"
+
   - service: logbook.log
     data:
-      name: "TV Input"
-      message: "Fixed input '{{ desired_input }}' → using '{{ matched_source }}' on {{ tv }}."
+      name: "TV Input + Volume"
+      message: >
+        Fixed input '{{ desired_input }}' → using '{{ matched_source }}' on {{ tv }}.
+        Set Sonos volume to {{ (volume_level | float) | round(2) }}.
       entity_id: media_player.lg_webos_smart_tv
+
