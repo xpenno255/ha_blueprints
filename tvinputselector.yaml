@@ -1,8 +1,8 @@
 blueprint:
-  name: TV — Select Input v1.1
+  name: TV — Select Input v1.2
   description: >
-    Switches a TV/media_player to the input named by an input_select helper.
-    If the TV is off, it powers on, waits until responsive, then selects the input.
+    Select a TV/media_player and a source from the Living Room TV input list helper.
+    If the TV is off, it powers on, waits, then switches to the chosen input.
   domain: script
   input:
     tv:
@@ -11,12 +11,12 @@ blueprint:
         entity:
           domain: media_player
 
-    input_helper:
-      name: Input helper (input_select)
-      description: The helper whose *current value* is the desired input/source.
+    desired_input:
+      name: Input / Source
+      description: Pick the TV input from the Living Room helper list.
       selector:
-        entity:
-          domain: input_select
+        state:
+          entity_id: input_select.living_room_tv_input_list  # hard-linked to your helper
 
     power_on_timeout:
       name: Power-on timeout (seconds)
@@ -30,7 +30,6 @@ blueprint:
 
     source_list_timeout:
       name: Source list availability timeout (seconds)
-      description: Wait for TV to expose sources (if it does). Continues on timeout.
       default: 45
       selector:
         number:
@@ -41,7 +40,6 @@ blueprint:
 
     settle_delay:
       name: Extra settle delay after power-on (seconds)
-      description: Some TVs need a short delay before accepting source changes.
       default: 3
       selector:
         number:
@@ -55,16 +53,14 @@ max_exceeded: silent
 
 variables:
   tv: !input tv
-  input_helper: !input input_helper
+  desired_input: !input desired_input
   power_on_timeout: !input power_on_timeout
   source_list_timeout: !input source_list_timeout
   settle_delay: !input settle_delay
 
-  desired_input: "{{ states(input_helper) | string }}"
   source_list: "{{ state_attr(tv, 'source_list') or [] }}"
   desired_norm: "{{ desired_input | lower | trim }}"
   source_list_norm: "{{ source_list | map('string') | map('lower') | list }}"
-
   matched_source: >
     {% set d = desired_norm %}
     {% set candidates = source_list | list %}
@@ -75,29 +71,25 @@ variables:
     {% else %}
       {% set starts = [] %}
       {% for i in range(norm|length) %}
-        {% if norm[i].startswith(d) %}
-          {% set _ = starts.append(i) %}
-        {% endif %}
+        {% if norm[i].startswith(d) %}{% set _ = starts.append(i) %}{% endif %}
       {% endfor %}
       {% if starts %}
         {{ candidates[starts[0]] }}
       {% else %}
         {% set contains = [] %}
         {% for i in range(norm|length) %}
-          {% if d in norm[i] %}
-            {% set _ = contains.append(i) %}
-          {% endif %}
+          {% if d in norm[i] %}{% set _ = contains.append(i) %}{% endif %}
         {% endfor %}
         {% if contains %}
           {{ candidates[contains[0]] }}
         {% else %}
-          {{ desired_input }}  {# fall back to helper value even if not in list #}
+          {{ desired_input }}
         {% endif %}
       {% endif %}
     {% endif %}
 
 sequence:
-  - alias: Power on TV if off
+  - alias: Power on if off
     if:
       - condition: state
         entity_id: !input tv
@@ -106,23 +98,19 @@ sequence:
       - service: media_player.turn_on
         target:
           entity_id: !input tv
-
-      - alias: Wait until TV becomes responsive
-        wait_template: >
-          {{ states(tv) not in ['off','unavailable','unknown'] }}
+      - wait_template: "{{ states(tv) not in ['off','unavailable','unknown'] }}"
         timeout: "{{ power_on_timeout }}"
-
       - delay:
           seconds: "{{ settle_delay }}"
 
-  - alias: Optionally wait for source_list to appear
+  - alias: Optionally wait for source_list
     wait_template: >
       {{ (state_attr(tv, 'source_list') or []) | count > 0
          or states(tv) not in ['off','unavailable','unknown'] }}
     timeout: "{{ source_list_timeout }}"
     continue_on_timeout: true
 
-  - alias: Switch input/source
+  - alias: Switch input
     service: media_player.select_source
     target:
       entity_id: !input tv
@@ -132,6 +120,5 @@ sequence:
   - service: logbook.log
     data:
       name: "TV Input"
-      message: >
-        Helper '{{ input_helper }}' requested '{{ desired_input }}' → using '{{ matched_source }}' on {{ tv }}.
+      message: "Selected '{{ desired_input }}' → using '{{ matched_source }}' on {{ tv }}."
       entity_id: !input tv
