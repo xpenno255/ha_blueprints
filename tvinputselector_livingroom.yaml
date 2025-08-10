@@ -1,5 +1,5 @@
 blueprint:
-  name: TV — Select Input v1.5
+  name: TV — Select Input v1.6
   description: >
     Creates a script (one per input) for media_player.lg_webos_smart_tv.
     Choose the TV input once (from input_select.living_room_tv_input_list) and set a fixed
