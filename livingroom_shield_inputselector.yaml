@@ -1,19 +1,13 @@
 blueprint:
-  name: Living Room TV Shield Input Selector v1.1
+  name: Living Room TV Shield Input Selector v1.2
   description: >
-    Creates a script (one per combo) that powers/wakes Nvidia Shield and LG webOS TV,
-    launches a Shield app/source, then switches the TV to the chosen input.
-    TV input comes from input_select.living_room_tv_input_list.
+    Powers on Nvidia Shield and LG webOS TV, launches a Shield app/source,
+    then switches the TV to the fixed input "SHIELD Game Console".
     Shield app/source comes from input_select.shield_input_list.
+    Timings are hard-coded here — editing this blueprint updates all scripts.
   domain: script
 
   input:
-    tv_input:
-      name: TV input (choose once)
-      selector:
-        state:
-          entity_id: input_select.living_room_tv_input_list
-
     shield_source:
       name: Shield app/source (choose once)
       selector:
@@ -23,27 +17,26 @@ blueprint:
 mode: restart
 max_exceeded: silent
 
-# -------- Global constants (edit here to affect ALL scripts using this blueprint) --------
+# -------- Global constants --------
 variables:
   tv: media_player.lg_webos_smart_tv
   shield: media_player.android_tv_192_168_1_41
 
-  # TV timings
+  # Timings
   tv_power_on_timeout: 10
   tv_source_list_timeout: 3
   tv_settle_delay: 3
 
-  # Shield timings
   shield_power_on_timeout: 5
   shield_settle_delay: 1
 
-  # Fixed per-script selections
-  desired_input: !input tv_input
+  # Fixed values
+  desired_input: "SHIELD Game Console"
   desired_shield_source: !input shield_source
 
-  # TV input matching helpers (tolerant of case/spacing)
+  # Match helper for TV input (tolerant of name variance)
   source_list: "{{ state_attr(tv, 'source_list') or [] }}"
-  desired_norm: "{{ (desired_input or '') | string | lower | trim }}"
+  desired_norm: "{{ desired_input | lower | trim }}"
   source_list_norm: "{{ source_list | map('string') | map('lower') | list }}"
   matched_source: >
     {% set d = desired_norm %}
@@ -70,7 +63,7 @@ variables:
     {% endif %}
 
 sequence:
-  # 1) Ensure Shield is on, then launch selected app/source
+  # 1) Power on Shield if off
   - alias: Power on Shield if off
     if:
       - condition: state
@@ -85,6 +78,7 @@ sequence:
       - delay:
           seconds: "{{ shield_settle_delay }}"
 
+  # 2) Launch chosen Shield app/source
   - alias: Launch Shield app/source
     service: media_player.select_source
     target:
@@ -92,7 +86,7 @@ sequence:
     data:
       source: "{{ desired_shield_source }}"
 
-  # 2) Power on TV if needed
+  # 3) Power on TV if off
   - alias: Power on TV if off
     if:
       - condition: state
@@ -107,7 +101,7 @@ sequence:
       - delay:
           seconds: "{{ tv_settle_delay }}"
 
-  # 3) (Optional) wait for TV source list
+  # 4) Wait for TV sources (optional)
   - alias: Wait for TV sources (optional)
     wait_template: >
       {{ (state_attr(tv, 'source_list') or []) | count > 0
@@ -115,8 +109,8 @@ sequence:
     timeout: "{{ tv_source_list_timeout }}"
     continue_on_timeout: true
 
-  # 4) Switch TV input
-  - alias: Switch TV to fixed input
+  # 5) Switch TV to fixed input
+  - alias: Switch TV to SHIELD Game Console
     service: media_player.select_source
     target:
       entity_id: media_player.lg_webos_smart_tv
@@ -127,6 +121,6 @@ sequence:
     data:
       name: "TV+Shield"
       message: >
-        TV → '{{ matched_source }}' (requested '{{ desired_input }}').
+        TV → '{{ matched_source }}' (fixed input '{{ desired_input }}').
         Shield source: '{{ desired_shield_source }}'.
       entity_id: media_player.lg_webos_smart_tv
