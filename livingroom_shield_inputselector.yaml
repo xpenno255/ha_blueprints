@@ -1,10 +1,10 @@
 blueprint:
-  name: Living Room TV Shield Input Selector v1.2
+  name: Living Room TV Shield Input Selector v1.3
   description: >
-    Powers on Nvidia Shield and LG webOS TV, launches a Shield app/source,
-    then switches the TV to the fixed input "SHIELD Game Console".
-    Shield app/source comes from input_select.shield_input_list.
-    Timings are hard-coded here — editing this blueprint updates all scripts.
+    Powers on Nvidia Shield and LG webOS TV, launches a Shield app/source (chosen once per script),
+    then switches the TV to the fixed input "SHIELD Game Console" and sets Sonos Playbar volume.
+    Shield app/source comes from input_select.shield_input_list. Timings are hard-coded here.
+
   domain: script
 
   input:
@@ -14,6 +14,17 @@ blueprint:
         state:
           entity_id: input_select.shield_input_list
 
+    volume_level:
+      name: Sonos volume (0.00–1.00, per script)
+      description: Target volume for media_player.living_room_sonos
+      default: 0.35
+      selector:
+        number:
+          min: 0
+          max: 1
+          step: 0.01
+          mode: slider
+
 mode: restart
 max_exceeded: silent
 
@@ -21,6 +32,7 @@ max_exceeded: silent
 variables:
   tv: media_player.lg_webos_smart_tv
   shield: media_player.android_tv_192_168_1_41
+  sonos: media_player.living_room_sonos
 
   # Timings
   tv_power_on_timeout: 10
@@ -33,6 +45,7 @@ variables:
   # Fixed values
   desired_input: "SHIELD Game Console"
   desired_shield_source: !input shield_source
+  volume_level: !input volume_level
 
   # Match helper for TV input (tolerant of name variance)
   source_list: "{{ state_attr(tv, 'source_list') or [] }}"
@@ -117,10 +130,19 @@ sequence:
     data:
       source: "{{ matched_source }}"
 
+  # 6) Set Sonos Playbar volume
+  - alias: Set Sonos volume
+    service: media_player.volume_set
+    target:
+      entity_id: media_player.living_room_sonos
+    data:
+      volume_level: "{{ volume_level | float }}"
+
   - service: logbook.log
     data:
-      name: "TV+Shield"
+      name: "TV+Shield+Sonos"
       message: >
         TV → '{{ matched_source }}' (fixed input '{{ desired_input }}').
         Shield source: '{{ desired_shield_source }}'.
+        Sonos volume: {{ (volume_level | float) | round(2) }}.
       entity_id: media_player.lg_webos_smart_tv
