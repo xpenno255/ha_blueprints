@@ -1,26 +1,23 @@
 blueprint:
-  name: TV — Select Input v1
+  name: TV — Select Input v1.1
   description: >
-    Creates a script that selects an input on a TV/media_player. If the TV is off,
-    it will power on, wait until responsive, then switch to the chosen input.
-    Works with most TVs that expose source_list and support media_player.select_source.
+    Switches a TV/media_player to the input named by an input_select helper.
+    If the TV is off, it powers on, waits until responsive, then selects the input.
   domain: script
-  source_url: https://example.invalid/blueprints/tv_select_input
   input:
     tv:
-      name: TV
-      description: Select the TV/media player entity.
+      name: TV / Media Player
       selector:
         entity:
           domain: media_player
-    desired_input:
-      name: Input / Source
-      description: >
-        Type the input/source name as shown by your TV (e.g. "HDMI 1", "PlayStation", "TV", "YouTube").
-        Matching is case-insensitive and will try a best match if exact not found.
+
+    input_helper:
+      name: Input helper (input_select)
+      description: The helper whose *current value* is the desired input/source.
       selector:
-        text:
-          multiline: false
+        entity:
+          domain: input_select
+
     power_on_timeout:
       name: Power-on timeout (seconds)
       default: 90
@@ -28,57 +25,62 @@ blueprint:
         number:
           min: 5
           max: 300
-          mode: slider
           unit_of_measurement: s
+          mode: slider
+
     source_list_timeout:
       name: Source list availability timeout (seconds)
+      description: Wait for TV to expose sources (if it does). Continues on timeout.
       default: 45
       selector:
         number:
           min: 5
           max: 180
-          mode: slider
           unit_of_measurement: s
+          mode: slider
+
     settle_delay:
       name: Extra settle delay after power-on (seconds)
-      description: Some TVs need a short extra delay before accepting source changes.
+      description: Some TVs need a short delay before accepting source changes.
       default: 3
       selector:
         number:
           min: 0
           max: 20
-          mode: slider
           unit_of_measurement: s
+          mode: slider
 
 mode: restart
 max_exceeded: silent
 
 variables:
   tv: !input tv
-  desired_input: !input desired_input
+  input_helper: !input input_helper
   power_on_timeout: !input power_on_timeout
   source_list_timeout: !input source_list_timeout
   settle_delay: !input settle_delay
 
-  # Helper variables
-  current_state: "{{ states(tv) }}"
+  desired_input: "{{ states(input_helper) | string }}"
   source_list: "{{ state_attr(tv, 'source_list') or [] }}"
-  # Prepare some normalised versions for matching
-  desired_norm: "{{ (desired_input or '') | string | lower | trim }}"
+  desired_norm: "{{ desired_input | lower | trim }}"
   source_list_norm: "{{ source_list | map('string') | map('lower') | list }}"
-  # Find best match: exact (case-insensitive), else startswith/contains heuristics
+
   matched_source: >
     {% set d = desired_norm %}
     {% set candidates = source_list | list %}
     {% set norm = source_list_norm %}
-    {% set exact = (norm.index(d) if d in norm else None) %}
+    {% set exact = (norm.index(d) if d in norm else none) %}
     {% if exact is not none %}
       {{ candidates[exact] }}
     {% else %}
-      {% set sw_idx = (norm | select('match', '^' ~ d | regex_escape) | list) %}
-      {% if sw_idx %}
-        {% set first = norm.index(sw_idx[0]) %}
-        {{ candidates[first] }}
+      {% set starts = [] %}
+      {% for i in range(norm|length) %}
+        {% if norm[i].startswith(d) %}
+          {% set _ = starts.append(i) %}
+        {% endif %}
+      {% endfor %}
+      {% if starts %}
+        {{ candidates[starts[0]] }}
       {% else %}
         {% set contains = [] %}
         {% for i in range(norm|length) %}
@@ -89,13 +91,13 @@ variables:
         {% if contains %}
           {{ candidates[contains[0]] }}
         {% else %}
-          {{ desired_input }}   {# fall back to user value #}
+          {{ desired_input }}  {# fall back to helper value even if not in list #}
         {% endif %}
       {% endif %}
     {% endif %}
 
 sequence:
-  - alias: "If TV is off, turn it on"
+  - alias: Power on TV if off
     if:
       - condition: state
         entity_id: !input tv
@@ -105,36 +107,31 @@ sequence:
         target:
           entity_id: !input tv
 
-      # Wait until it's no longer off AND the entity exists
-      - alias: "Wait for TV to report on/idle/playing/paused"
+      - alias: Wait until TV becomes responsive
         wait_template: >
           {{ states(tv) not in ['off','unavailable','unknown'] }}
         timeout: "{{ power_on_timeout }}"
 
-      # Some devices need a small settle delay
       - delay:
           seconds: "{{ settle_delay }}"
 
-  # Try to wait for a non-empty source_list (if the device exposes it)
-  - alias: "Optionally wait until source_list is available"
+  - alias: Optionally wait for source_list to appear
     wait_template: >
       {{ (state_attr(tv, 'source_list') or []) | count > 0
          or states(tv) not in ['off','unavailable','unknown'] }}
     timeout: "{{ source_list_timeout }}"
     continue_on_timeout: true
 
-  # Attempt the source switch
-  - alias: "Select input/source"
+  - alias: Switch input/source
     service: media_player.select_source
-    data:
-      source: "{{ matched_source }}"
     target:
       entity_id: !input tv
+    data:
+      source: "{{ matched_source }}"
 
-  # Optional: brief confirmation in the logbook
   - service: logbook.log
     data:
       name: "TV Input"
       message: >
-        Requested '{{ desired_input }}' → using '{{ matched_source }}' on {{ tv }}.
+        Helper '{{ input_helper }}' requested '{{ desired_input }}' → using '{{ matched_source }}' on {{ tv }}.
       entity_id: !input tv
