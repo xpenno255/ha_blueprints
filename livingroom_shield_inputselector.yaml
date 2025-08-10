@@ -1,5 +1,5 @@
 blueprint:
-  name: Living Room TV Shield Input Selector v1.0
+  name: Living Room TV Shield Input Selector v1.1
   description: >
     Creates a script (one per combo) that powers/wakes Nvidia Shield and LG webOS TV,
     launches a Shield app/source, then switches the TV to the chosen input.
@@ -29,12 +29,12 @@ variables:
   shield: media_player.android_tv_192_168_1_41
 
   # TV timings
-  tv_power_on_timeout: 90
-  tv_source_list_timeout: 45
+  tv_power_on_timeout: 10
+  tv_source_list_timeout: 3
   tv_settle_delay: 3
 
   # Shield timings
-  shield_power_on_timeout: 30
+  shield_power_on_timeout: 5
   shield_settle_delay: 1
 
   # Fixed per-script selections
