@@ -1,0 +1,140 @@
+blueprint:
+  name: TV — Select Input (auto power-on if needed)
+  description: >
+    Creates a script that selects an input on a TV/media_player. If the TV is off,
+    it will power on, wait until responsive, then switch to the chosen input.
+    Works with most TVs that expose source_list and support media_player.select_source.
+  domain: script
+  source_url: https://example.invalid/blueprints/tv_select_input
+  input:
+    tv:
+      name: TV
+      description: Select the TV/media player entity.
+      selector:
+        entity:
+          domain: media_player
+    desired_input:
+      name: Input / Source
+      description: >
+        Type the input/source name as shown by your TV (e.g. "HDMI 1", "PlayStation", "TV", "YouTube").
+        Matching is case-insensitive and will try a best match if exact not found.
+      selector:
+        text:
+          multiline: false
+    power_on_timeout:
+      name: Power-on timeout (seconds)
+      default: 90
+      selector:
+        number:
+          min: 5
+          max: 300
+          mode: slider
+          unit_of_measurement: s
+    source_list_timeout:
+      name: Source list availability timeout (seconds)
+      default: 45
+      selector:
+        number:
+          min: 5
+          max: 180
+          mode: slider
+          unit_of_measurement: s
+    settle_delay:
+      name: Extra settle delay after power-on (seconds)
+      description: Some TVs need a short extra delay before accepting source changes.
+      default: 3
+      selector:
+        number:
+          min: 0
+          max: 20
+          mode: slider
+          unit_of_measurement: s
+
+mode: restart
+max_exceeded: silent
+
+variables:
+  tv: !input tv
+  desired_input: !input desired_input
+  power_on_timeout: !input power_on_timeout
+  source_list_timeout: !input source_list_timeout
+  settle_delay: !input settle_delay
+
+  # Helper variables
+  current_state: "{{ states(tv) }}"
+  source_list: "{{ state_attr(tv, 'source_list') or [] }}"
+  # Prepare some normalised versions for matching
+  desired_norm: "{{ (desired_input or '') | string | lower | trim }}"
+  source_list_norm: "{{ source_list | map('string') | map('lower') | list }}"
+  # Find best match: exact (case-insensitive), else startswith/contains heuristics
+  matched_source: >
+    {% set d = desired_norm %}
+    {% set candidates = source_list | list %}
+    {% set norm = source_list_norm %}
+    {% set exact = (norm.index(d) if d in norm else None) %}
+    {% if exact is not none %}
+      {{ candidates[exact] }}
+    {% else %}
+      {% set sw_idx = (norm | select('match', '^' ~ d | regex_escape) | list) %}
+      {% if sw_idx %}
+        {% set first = norm.index(sw_idx[0]) %}
+        {{ candidates[first] }}
+      {% else %}
+        {% set contains = [] %}
+        {% for i in range(norm|length) %}
+          {% if d in norm[i] %}
+            {% set _ = contains.append(i) %}
+          {% endif %}
+        {% endfor %}
+        {% if contains %}
+          {{ candidates[contains[0]] }}
+        {% else %}
+          {{ desired_input }}   {# fall back to user value #}
+        {% endif %}
+      {% endif %}
+    {% endif %}
+
+sequence:
+  - alias: "If TV is off, turn it on"
+    if:
+      - condition: state
+        entity_id: !input tv
+        state: "off"
+    then:
+      - service: media_player.turn_on
+        target:
+          entity_id: !input tv
+
+      # Wait until it's no longer off AND the entity exists
+      - alias: "Wait for TV to report on/idle/playing/paused"
+        wait_template: >
+          {{ states(tv) not in ['off','unavailable','unknown'] }}
+        timeout: "{{ power_on_timeout }}"
+
+      # Some devices need a small settle delay
+      - delay:
+          seconds: "{{ settle_delay }}"
+
+  # Try to wait for a non-empty source_list (if the device exposes it)
+  - alias: "Optionally wait until source_list is available"
+    wait_template: >
+      {{ (state_attr(tv, 'source_list') or []) | count > 0
+         or states(tv) not in ['off','unavailable','unknown'] }}
+    timeout: "{{ source_list_timeout }}"
+    continue_on_timeout: true
+
+  # Attempt the source switch
+  - alias: "Select input/source"
+    service: media_player.select_source
+    data:
+      source: "{{ matched_source }}"
+    target:
+      entity_id: !input tv
+
+  # Optional: brief confirmation in the logbook
+  - service: logbook.log
+    data:
+      name: "TV Input"
+      message: >
+        Requested '{{ desired_input }}' → using '{{ matched_source }}' on {{ tv }}.
+      entity_id: !input tv
