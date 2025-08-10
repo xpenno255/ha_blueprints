@@ -1,15 +1,16 @@
 blueprint:
-  name: Living Room TV Virgin Media Input Selector v1.0
+  name: Living Room TV Virgin Media Input Selector v1.1
   description: >
-    Powers on Virgin Media box and LG webOS TV, tunes a Virgin channel (chosen once per script),
-    then switches the TV to the fixed input "Virgin(West Midlands) Set-Top Box" and sets Sonos volume.
-    Channel comes from input_select.virgin_media_input_list. Timings are hard-coded here.
+    Powers on Virgin Media box and LG webOS TV, selects a Virgin source/channel (chosen once per script)
+    via media_player.select_source, then switches the TV to the fixed input
+    "Virgin(West Midlands) Set-Top Box" and sets Sonos volume. Channel list comes from
+    input_select.virgin_media_input_list. Timings are hard-coded here.
 
   domain: script
 
   input:
     virgin_channel:
-      name: Virgin channel (choose once)
+      name: Virgin channel/source (choose once)
       selector:
         state:
           entity_id: input_select.virgin_media_input_list
@@ -91,14 +92,13 @@ sequence:
       - delay:
           seconds: "{{ virgin_settle_delay }}"
 
-  # 2) Tune selected Virgin channel
-  - alias: Tune Virgin channel
-    service: media_player.play_media
+  # 2) Select Virgin channel/source via select_source
+  - alias: Select Virgin channel/source
+    service: media_player.select_source
     target:
       entity_id: media_player.virgin_tv
     data:
-      media_content_type: channel
-      media_content_id: "{{ desired_channel }}"
+      source: "{{ desired_channel }}"
 
   # 3) Power on TV if off
   - alias: Power on TV if off
@@ -144,6 +144,7 @@ sequence:
       name: "TV+Virgin+Sonos"
       message: >
         TV → '{{ matched_source }}' (fixed input '{{ desired_input }}').
-        Virgin channel: '{{ desired_channel }}'.
+        Virgin source: '{{ desired_channel }}'.
         Sonos volume: {{ (volume_level | float) | round(2) }}.
       entity_id: media_player.lg_webos_smart_tv
+
