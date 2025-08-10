@@ -1,65 +1,37 @@
 blueprint:
-  name: TV — Select Input v1.2
+  name: TV — Select Input v1.3
   description: >
-    Select a TV/media_player and a source from the Living Room TV input list helper.
-    If the TV is off, it powers on, waits, then switches to the chosen input.
+    Creates a script (one per input) for media_player.lg_webos_smart_tv.
+    You choose the input once (from input_select.living_room_tv_input_list) when creating the script.
+    Power-on behaviour and timings are hard-coded here so changing this blueprint updates all scripts.
   domain: script
-  input:
-    tv:
-      name: TV / Media Player
-      selector:
-        entity:
-          domain: media_player
 
+  input:
     desired_input:
-      name: Input / Source
-      description: Pick the TV input from the Living Room helper list.
+      name: Input / Source (choose once)
+      description: Select from your helper; the chosen value is baked into this script instance.
       selector:
         state:
-          entity_id: input_select.living_room_tv_input_list  # hard-linked to your helper
-
-    power_on_timeout:
-      name: Power-on timeout (seconds)
-      default: 90
-      selector:
-        number:
-          min: 5
-          max: 300
-          unit_of_measurement: s
-          mode: slider
-
-    source_list_timeout:
-      name: Source list availability timeout (seconds)
-      default: 45
-      selector:
-        number:
-          min: 5
-          max: 180
-          unit_of_measurement: s
-          mode: slider
-
-    settle_delay:
-      name: Extra settle delay after power-on (seconds)
-      default: 3
-      selector:
-        number:
-          min: 0
-          max: 20
-          unit_of_measurement: s
-          mode: slider
+          entity_id: input_select.living_room_tv_input_list
 
 mode: restart
 max_exceeded: silent
 
+# -------- Tunable constants (edit these to change behaviour for ALL scripts) --------
 variables:
-  tv: !input tv
-  desired_input: !input desired_input
-  power_on_timeout: !input power_on_timeout
-  source_list_timeout: !input source_list_timeout
-  settle_delay: !input settle_delay
+  tv: media_player.lg_webos_smart_tv
 
+  # Global timing configuration
+  power_on_timeout: 10        # seconds to wait for TV to become responsive after power on
+  source_list_timeout: 3     # seconds to wait for source_list to appear (continues on timeout)
+  settle_delay: 3             # extra delay after power-on before switching input
+
+  # Fixed input chosen at creation time
+  desired_input: !input desired_input
+
+  # Matching helpers (be tolerant of minor name differences)
   source_list: "{{ state_attr(tv, 'source_list') or [] }}"
-  desired_norm: "{{ desired_input | lower | trim }}"
+  desired_norm: "{{ (desired_input or '') | string | lower | trim }}"
   source_list_norm: "{{ source_list | map('string') | map('lower') | list }}"
   matched_source: >
     {% set d = desired_norm %}
@@ -83,7 +55,7 @@ variables:
         {% if contains %}
           {{ candidates[contains[0]] }}
         {% else %}
-          {{ desired_input }}
+          {{ desired_input }}  {# fall back to chosen value #}
         {% endif %}
       {% endif %}
     {% endif %}
@@ -92,13 +64,14 @@ sequence:
   - alias: Power on if off
     if:
       - condition: state
-        entity_id: !input tv
+        entity_id: media_player.lg_webos_smart_tv
         state: "off"
     then:
       - service: media_player.turn_on
         target:
-          entity_id: !input tv
-      - wait_template: "{{ states(tv) not in ['off','unavailable','unknown'] }}"
+          entity_id: media_player.lg_webos_smart_tv
+      - alias: Wait until TV becomes responsive
+        wait_template: "{{ states(tv) not in ['off','unavailable','unknown'] }}"
         timeout: "{{ power_on_timeout }}"
       - delay:
           seconds: "{{ settle_delay }}"
@@ -110,15 +83,15 @@ sequence:
     timeout: "{{ source_list_timeout }}"
     continue_on_timeout: true
 
-  - alias: Switch input
+  - alias: Switch to fixed input
     service: media_player.select_source
     target:
-      entity_id: !input tv
+      entity_id: media_player.lg_webos_smart_tv
     data:
       source: "{{ matched_source }}"
 
   - service: logbook.log
     data:
       name: "TV Input"
-      message: "Selected '{{ desired_input }}' → using '{{ matched_source }}' on {{ tv }}."
-      entity_id: !input tv
+      message: "Fixed input '{{ desired_input }}' → using '{{ matched_source }}' on {{ tv }}."
+      entity_id: media_player.lg_webos_smart_tv
