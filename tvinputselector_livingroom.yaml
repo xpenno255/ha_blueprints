@@ -1,5 +1,5 @@
 blueprint:
-  name: TV — Select Input v1.4
+  name: TV — Select Input v1.5
   description: >
     Creates a script (one per input) for media_player.lg_webos_smart_tv.
     Choose the TV input once (from input_select.living_room_tv_input_list) and set a fixed
@@ -19,7 +19,7 @@ blueprint:
     volume_level:
       name: Sonos volume (0.00–1.00)
       description: Per-script target volume for media_player.living_room_sonos.
-      default: 0.25
+      default: 0.35
       selector:
         number:
           min: 0
@@ -35,8 +35,8 @@ variables:
   tv: media_player.lg_webos_smart_tv
   sonos: media_player.living_room_sonos
 
-  power_on_timeout: 90        # seconds to wait for TV to become responsive after power on
-  source_list_timeout: 45     # seconds to wait for source_list to appear (continues on timeout)
+  power_on_timeout: 10        # seconds to wait for TV to become responsive after power on
+  source_list_timeout: 3     # seconds to wait for source_list to appear (continues on timeout)
   settle_delay: 3             # extra delay after power-on before switching input
 
   # Fixed per-script inputs
