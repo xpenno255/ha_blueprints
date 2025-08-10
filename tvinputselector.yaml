@@ -1,5 +1,5 @@
 blueprint:
-  name: TV — Select Input (auto power-on if needed)
+  name: TV — Select Input v1
   description: >
     Creates a script that selects an input on a TV/media_player. If the TV is off,
     it will power on, wait until responsive, then switch to the chosen input.
