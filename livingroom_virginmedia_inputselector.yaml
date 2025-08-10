@@ -1,11 +1,10 @@
 blueprint:
-  name: Living Room TV Virgin Media Input Selector v1.1
+  name: Living Room TV Virgin Media Input Selector v1.2
   description: >
-    Powers on Virgin Media box and LG webOS TV, selects a Virgin source/channel (chosen once per script)
-    via media_player.select_source, then switches the TV to the fixed input
-    "Virgin(West Midlands) Set-Top Box" and sets Sonos volume. Channel list comes from
-    input_select.virgin_media_input_list. Timings are hard-coded here.
-
+    One script per Virgin channel. Powers on Virgin box and LG webOS TV,
+    selects the baked-in Virgin channel via media_player.select_source,
+    switches the TV to "Virgin(West Midlands) Set-Top Box", then sets Sonos volume.
+    Channel is chosen once at creation from input_select.virgin_media_input_list.
   domain: script
 
   input:
@@ -29,7 +28,7 @@ blueprint:
 mode: restart
 max_exceeded: silent
 
-# -------- Global constants --------
+# -------- Global constants (edit here to affect ALL scripts using this blueprint) --------
 variables:
   tv: media_player.lg_webos_smart_tv
   virgin: media_player.virgin_tv
@@ -43,37 +42,22 @@ variables:
   virgin_power_on_timeout: 5
   virgin_settle_delay: 1
 
-  # Fixed values
+  # Fixed values (baked into each script instance)
   desired_input: "Virgin(West Midlands) Set-Top Box"
   desired_channel: !input virgin_channel
   volume_level: !input volume_level
 
-  # TV input matching helpers (tolerant of name variance)
-  source_list: "{{ state_attr(tv, 'source_list') or [] }}"
-  desired_norm: "{{ desired_input | lower | trim }}"
-  source_list_norm: "{{ source_list | map('string') | map('lower') | list }}"
-  matched_source: >
-    {% set d = desired_norm %}
-    {% set cand = source_list | list %}
-    {% set norm = source_list_norm %}
+  # TV input matching helper (kept tolerant of case/spacing)
+  tv_sources: "{{ state_attr(tv, 'source_list') or [] }}"
+  tv_desired_norm: "{{ desired_input | lower | trim }}"
+  tv_sources_norm: "{{ tv_sources | map('string') | map('lower') | list }}"
+  tv_matched_source: >
+    {% set d = tv_desired_norm %}
+    {% set cand = tv_sources | list %}
+    {% set norm = tv_sources_norm %}
     {% set idx = (norm.index(d) if d in norm else none) %}
-    {% if idx is not none %}
-      {{ cand[idx] }}
-    {% else %}
-      {% set starts = [] %}
-      {% for i in range(norm|length) %}
-        {% if norm[i].startswith(d) %}{% set _ = starts.append(i) %}{% endif %}
-      {% endfor %}
-      {% if starts %}{{ cand[starts[0]] }}
-      {% else %}
-        {% set contains = [] %}
-        {% for i in range(norm|length) %}
-          {% if d in norm[i] %}{% set _ = contains.append(i) %}{% endif %}
-        {% endfor %}
-        {% if contains %}{{ cand[contains[0]] }}
-        {% else %}{{ desired_input }}
-        {% endif %}
-      {% endif %}
+    {% if idx is not none %}{{ cand[idx] }}
+    {% else %}{{ desired_input }}
     {% endif %}
 
 sequence:
@@ -92,7 +76,7 @@ sequence:
       - delay:
           seconds: "{{ virgin_settle_delay }}"
 
-  # 2) Select Virgin channel/source via select_source
+  # 2) Select baked-in Virgin channel/source (no runtime matching)
   - alias: Select Virgin channel/source
     service: media_player.select_source
     target:
@@ -115,8 +99,8 @@ sequence:
       - delay:
           seconds: "{{ tv_settle_delay }}"
 
-  # 4) Wait for TV sources (optional)
-  - alias: Wait for TV sources (optional)
+  # 4) (Optional) brief wait for TV sources (kept short; no channel matching)
+  - alias: Optional short wait for TV sources
     wait_template: >
       {{ (state_attr(tv, 'source_list') or []) | count > 0
          or states(tv) not in ['off','unavailable','unknown'] }}
@@ -129,7 +113,7 @@ sequence:
     target:
       entity_id: media_player.lg_webos_smart_tv
     data:
-      source: "{{ matched_source }}"
+      source: "{{ tv_matched_source }}"
 
   # 6) Set Sonos Playbar volume
   - alias: Set Sonos volume
@@ -143,8 +127,7 @@ sequence:
     data:
       name: "TV+Virgin+Sonos"
       message: >
-        TV → '{{ matched_source }}' (fixed input '{{ desired_input }}').
-        Virgin source: '{{ desired_channel }}'.
+        Virgin source (baked-in): '{{ desired_channel }}'.
+        TV → '{{ tv_matched_source }}' (fixed input '{{ desired_input }}').
         Sonos volume: {{ (volume_level | float) | round(2) }}.
       entity_id: media_player.lg_webos_smart_tv
-
