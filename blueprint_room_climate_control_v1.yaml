@@ -1,8 +1,9 @@
 blueprint:
-  name: Room Thermostat Temperature Control v2.22
+  name: Room Thermostat Temperature Control v2.23
   description: >
     Adjust the thermostat setpoint based on external temperature, room schedules,
     specific conditions, and room occupancy status with configurable occupancy detection and time-based offsets.
+    Always applies a temporary override, then reverts to schedule after 10 minutes.
   domain: automation
   input:
     thermostat_inputs:
@@ -11,21 +12,18 @@ blueprint:
       input:
         thermostat:
           name: Target Thermostat
-          description: Select the thermostat to control.
           selector:
             entity:
               integration: ramses_cc
               domain: climate
         scheduled_setpoint:
           name: Scheduled Setpoint Helper
-          description: Input helper to retrieve the scheduled setpoint temperature.
           selector:
             entity:
               domain: sensor
               device_class: temperature
         external_temperature:
           name: External Temperature Sensor
-          description: Select the external temperature sensor.
           selector:
             entity:
               domain: sensor
@@ -96,7 +94,6 @@ blueprint:
       input:
         automation_delay:
           name: Automation Delay (s)
-          description: Stagger updates across rooms.
           selector: { number: { min: 0, max: 20, step: 1 } }
           default: 0
 
@@ -117,7 +114,6 @@ variables:
   delta_below_0: !input delta_below_0
   occupancy_sensor: !input room_occupancy_sensor
   unoccupied_duration: !input unoccupied_duration
-  reoccupied_duration: !input reoccupied_duration
   weekday_morning_offset: !input weekday_morning_offset
   weekday_afternoon_offset: !input weekday_afternoon_offset
   weekday_evening_offset: !input weekday_evening_offset
@@ -131,15 +127,12 @@ variables:
   thermostat_name: "{{ state_attr(thermostat, 'friendly_name') or thermostat }}"
   thermostat_currentsetpoint: "{{ state_attr(thermostat, 'temperature') | float(default=0) }}"
   is_weekend: "{{ now().weekday() in [5, 6] }}"
-
-  # 06:30–12:00, 12:00–16:30, 16:30–22:00
   time_period: >
     {% set m = now().hour*60 + now().minute %}
     {% if 390 <= m < 720 %}morning
     {% elif 720 <= m < 990 %}afternoon
     {% elif 990 <= m < 1320 %}evening
     {% else %}none{% endif %}
-
   unoccupied_offset: >
     {% if time_period == 'morning' %}
       {{ (is_weekend and weekend_morning_offset or weekday_morning_offset) | float(0) }}
@@ -148,8 +141,6 @@ variables:
     {% elif time_period == 'evening' %}
       {{ (is_weekend and weekend_evening_offset or weekday_evening_offset) | float(0) }}
     {% else %}0{% endif %}
-
-  # boolean, not a string
   is_unoccupied: >
     {% set s = occupancy_sensor %}
     {% if s and is_state(s, 'off') and states[s] is not none %}
@@ -176,106 +167,56 @@ action:
           - condition: template
             value_template: "{{ current_temperature > 15 }}"
         sequence:
-          - condition: template
-            value_template: >
-              {{ (state_attr(thermostat,'temperature') | float(0)) !=
-                 (scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied else 0)) }}
           - service: climate.set_temperature
             target: { entity_id: !input thermostat }
             data:
-              temperature: >
-                {{ scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied else 0) }}
-          - service: system_log.write
-            data:
-              level: warning
-              message: >
-                [Thermo {{ thermostat_name }}] Setpoint -> {{ scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied else 0) }}°C
-                (was {{ thermostat_currentsetpoint }}°C; ext {{ current_temperature }}°C; sched {{ scheduled_setpoint }}°C; unocc {{ is_unoccupied }}; offset {{ unoccupied_offset }}°C)
+              temperature: "{{ scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied else 0) }}"
+              preset_mode: temporary
 
       - conditions:
           - condition: template
             value_template: "{{ 10 < current_temperature <= 15 }}"
         sequence:
-          - condition: template
-            value_template: >
-              {{ (state_attr(thermostat,'temperature') | float(0)) !=
-                 (scheduled_setpoint + delta_above_10 + (unoccupied_offset if is_unoccupied else 0)) }}
           - service: climate.set_temperature
             target: { entity_id: !input thermostat }
             data:
-              temperature: >
-                {{ scheduled_setpoint + delta_above_10 + (unoccupied_offset if is_unoccupied else 0) }}
-          - service: system_log.write
-            data:
-              level: warning
-              message: >
-                [Thermo {{ thermostat_name }}] Setpoint -> {{ scheduled_setpoint + delta_above_10 + (unoccupied_offset if is_unoccupied else 0) }}°C
-                (was {{ thermostat_currentsetpoint }}°C; ext {{ current_temperature }}°C; sched {{ scheduled_setpoint }}°C; unocc {{ is_unoccupied }}; offset {{ unoccupied_offset }}°C)
+              temperature: "{{ scheduled_setpoint + delta_above_10 + (unoccupied_offset if is_unoccupied else 0) }}"
+              preset_mode: temporary
 
       - conditions:
           - condition: template
             value_template: "{{ 5 < current_temperature <= 10 }}"
         sequence:
-          - condition: template
-            value_template: >
-              {{ (state_attr(thermostat,'temperature') | float(0)) !=
-                 (scheduled_setpoint + delta_10_to_5 + (unoccupied_offset if is_unoccupied else 0)) }}
           - service: climate.set_temperature
             target: { entity_id: !input thermostat }
             data:
-              temperature: >
-                {{ scheduled_setpoint + delta_10_to_5 + (unoccupied_offset if is_unoccupied else 0) }}
-          - service: system_log.write
-            data:
-              level: warning
-              message: >
-                [Thermo {{ thermostat_name }}] Setpoint -> {{ scheduled_setpoint + delta_10_to_5 + (unoccupied_offset if is_unoccupied else 0) }}°C
-                (was {{ thermostat_currentsetpoint }}°C; ext {{ current_temperature }}°C; sched {{ scheduled_setpoint }}°C; unocc {{ is_unoccupied }}; offset {{ unoccupied_offset }}°C)
+              temperature: "{{ scheduled_setpoint + delta_10_to_5 + (unoccupied_offset if is_unoccupied else 0) }}"
+              preset_mode: temporary
 
       - conditions:
           - condition: template
             value_template: "{{ 0 < current_temperature <= 5 }}"
         sequence:
-          - condition: template
-            value_template: >
-              {{ (state_attr(thermostat,'temperature') | float(0)) !=
-                 (scheduled_setpoint + delta_5_to_0 + (unoccupied_offset if is_unoccupied else 0)) }}
           - service: climate.set_temperature
             target: { entity_id: !input thermostat }
             data:
-              temperature: >
-                {{ scheduled_setpoint + delta_5_to_0 + (unoccupied_offset if is_unoccupied else 0) }}
-          - service: system_log.write
-            data:
-              level: warning
-              message: >
-                [Thermo {{ thermostat_name }}] Setpoint -> {{ scheduled_setpoint + delta_5_to_0 + (unoccupied_offset if is_unoccupied else 0) }}°C
-                (was {{ thermostat_currentsetpoint }}°C; ext {{ current_temperature }}°C; sched {{ scheduled_setpoint }}°C; unocc {{ is_unoccupied }}; offset {{ unoccupied_offset }}°C)
+              temperature: "{{ scheduled_setpoint + delta_5_to_0 + (unoccupied_offset if is_unoccupied else 0) }}"
+              preset_mode: temporary
 
       - conditions:
           - condition: template
             value_template: "{{ current_temperature <= 0 }}"
         sequence:
-          - condition: template
-            value_template: >
-              {{ (state_attr(thermostat,'temperature') | float(0)) !=
-                 (scheduled_setpoint + delta_below_0 + (unoccupied_offset if is_unoccupied else 0)) }}
           - service: climate.set_temperature
             target: { entity_id: !input thermostat }
             data:
-              temperature: >
-                {{ scheduled_setpoint + delta_below_0 + (unoccupied_offset if is_unoccupied else 0) }}
-          - service: system_log.write
-            data:
-              level: warning
-              message: >
-                [Thermo {{ thermostat_name }}] Setpoint -> {{ scheduled_setpoint + delta_below_0 + (unoccupied_offset if is_unoccupied else 0) }}°C
-                (was {{ thermostat_currentsetpoint }}°C; ext {{ current_temperature }}°C; sched {{ scheduled_setpoint }}°C; unocc {{ is_unoccupied }}; offset {{ unoccupied_offset }}°C)
+              temperature: "{{ scheduled_setpoint + delta_below_0 + (unoccupied_offset if is_unoccupied else 0) }}"
+              preset_mode: temporary
 
-  # OPTIONAL revert after 10 minutes — uncomment if you really want this behaviour
+  # after 10 minutes, always revert to schedule
   - delay: "00:10:00"
-  - service: climate.set_temperature
+  - service: climate.set_hvac_mode
     target:
       entity_id: !input thermostat
     data:
-      temperature: "{{ scheduled_setpoint }}"
+      hvac_mode: follow_schedule
