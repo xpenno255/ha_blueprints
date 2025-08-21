@@ -273,9 +273,9 @@ action:
                 (was {{ thermostat_currentsetpoint }}°C; ext {{ current_temperature }}°C; sched {{ scheduled_setpoint }}°C; unocc {{ is_unoccupied }}; offset {{ unoccupied_offset }}°C)
 
   # OPTIONAL revert after 10 minutes — uncomment if you really want this behaviour
-  # - delay: "00:10:00"
-  # - service: climate.set_temperature
-  #   target:
-  #     entity_id: !input thermostat
-  #   data:
-  #     temperature: "{{ scheduled_setpoint }}"
+   - delay: "00:10:00"
+   - service: climate.set_temperature
+     target:
+       entity_id: !input thermostat
+     data:
+       temperature: "{{ scheduled_setpoint }}"
