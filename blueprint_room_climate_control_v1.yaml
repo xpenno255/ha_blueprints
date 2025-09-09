@@ -1,17 +1,18 @@
 blueprint:
-  name: Room Thermostat Temperature Control v2.23
+  name: Room Thermostat Temperature Control v2.25 (ramses_cc)
   description: >
     Adjust the thermostat setpoint based on external temperature, room schedules,
     specific conditions, and room occupancy status with configurable occupancy detection and time-based offsets.
-    Always applies a temporary override, then reverts to schedule after 10 minutes.
+    Uses ramses_cc.set_zone_mode with temporary_override and a timed duration.
   domain: automation
+
   input:
     thermostat_inputs:
       name: '# Thermostat Inputs'
       collapsed: false
       input:
         thermostat:
-          name: Target Thermostat
+          name: Target Thermostat (ramses_cc climate)
           selector:
             entity:
               integration: ramses_cc
@@ -49,6 +50,7 @@ blueprint:
           name: Delta for < 2°C
           selector: { number: { min: -3, max: 3, step: 0.5 } }
           default: 2.5
+
     occupancy_inputs:
       name: '# Occupancy Inputs'
       collapsed: false
@@ -88,6 +90,7 @@ blueprint:
           name: Weekend Evening Offset (16:30–22:00)
           selector: { number: { min: -5, max: 0, step: 0.5 } }
           default: -0.5
+
     misc_inputs:
       name: '# Misc Inputs'
       collapsed: false
@@ -96,6 +99,11 @@ blueprint:
           name: Automation Delay (s)
           selector: { number: { min: 0, max: 20, step: 1 } }
           default: 0
+        override_duration_minutes:
+          name: Temporary Override Duration (minutes)
+          description: Duration for ramses_cc temporary_override before auto-expiry.
+          selector: { number: { min: 1, max: 240, step: 1 } }
+          default: 10
 
 mode: restart
 
@@ -121,12 +129,14 @@ variables:
   weekend_afternoon_offset: !input weekend_afternoon_offset
   weekend_evening_offset: !input weekend_evening_offset
   automation_delay: !input automation_delay
+  override_duration_minutes: !input override_duration_minutes
 
   current_temperature: "{{ states(external_temperature_var) | float(0) }}"
   scheduled_setpoint: "{{ states(scheduled_setpoint_var) | float(0) }}"
   thermostat_name: "{{ state_attr(thermostat, 'friendly_name') or thermostat }}"
   thermostat_currentsetpoint: "{{ state_attr(thermostat, 'temperature') | float(default=0) }}"
   is_weekend: "{{ now().weekday() in [5, 6] }}"
+  # time bands: 06:30–12:00, 12:00–16:30, 16:30–22:00
   time_period: >
     {% set m = now().hour*60 + now().minute %}
     {% if 390 <= m < 720 %}morning
@@ -148,6 +158,9 @@ variables:
     {% else %}
       false
     {% endif %}
+  # derive hours/minutes for service payload
+  _dur_h: "{{ (override_duration_minutes | int(10)) // 60 }}"
+  _dur_m: "{{ (override_duration_minutes | int(10)) % 60 }}"
 
 condition:
   - condition: state
@@ -167,56 +180,118 @@ action:
           - condition: template
             value_template: "{{ current_temperature > 15 }}"
         sequence:
-          - service: climate.set_temperature
+          - variables:
+              new_temp: "{{ scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied else 0) }}"
+          - service: ramses_cc.set_zone_mode
             target: { entity_id: !input thermostat }
             data:
-              temperature: "{{ scheduled_setpoint + delta_above_15 + (unoccupied_offset if is_unoccupied else 0) }}"
-              preset_mode: temporary
+              mode: temporary_override
+              setpoint: "{{ new_temp | round(1) }}"
+              duration:
+                hours: "{{ _dur_h | int }}"
+                minutes: "{{ _dur_m | int }}"
+                seconds: 0
+          - service: system_log.write
+            data:
+              level: warning
+              message: >
+                [Thermo {{ thermostat_name }}] RAMSES TEMP OVERRIDE -> {{ new_temp | round(1) }}°C
+                for {{ override_duration_minutes }}m (was {{ thermostat_currentsetpoint }}°C;
+                ext {{ current_temperature }}°C; sched {{ scheduled_setpoint }}°C;
+                unocc {{ is_unoccupied }}; offset {{ unoccupied_offset }}°C)
 
       - conditions:
           - condition: template
             value_template: "{{ 10 < current_temperature <= 15 }}"
         sequence:
-          - service: climate.set_temperature
+          - variables:
+              new_temp: "{{ scheduled_setpoint + delta_above_10 + (unoccupied_offset if is_unoccupied else 0) }}"
+          - service: ramses_cc.set_zone_mode
             target: { entity_id: !input thermostat }
             data:
-              temperature: "{{ scheduled_setpoint + delta_above_10 + (unoccupied_offset if is_unoccupied else 0) }}"
-              preset_mode: temporary
+              mode: temporary_override
+              setpoint: "{{ new_temp | round(1) }}"
+              duration:
+                hours: "{{ _dur_h | int }}"
+                minutes: "{{ _dur_m | int }}"
+                seconds: 0
+          - service: system_log.write
+            data:
+              level: warning
+              message: >
+                [Thermo {{ thermostat_name }}] RAMSES TEMP OVERRIDE -> {{ new_temp | round(1) }}°C
+                for {{ override_duration_minutes }}m (was {{ thermostat_currentsetpoint }}°C;
+                ext {{ current_temperature }}°C; sched {{ scheduled_setpoint }}°C;
+                unocc {{ is_unoccupied }}; offset {{ unoccupied_offset }}°C)
 
       - conditions:
           - condition: template
             value_template: "{{ 5 < current_temperature <= 10 }}"
         sequence:
-          - service: climate.set_temperature
+          - variables:
+              new_temp: "{{ scheduled_setpoint + delta_10_to_5 + (unoccupied_offset if is_unoccupied else 0) }}"
+          - service: ramses_cc.set_zone_mode
             target: { entity_id: !input thermostat }
             data:
-              temperature: "{{ scheduled_setpoint + delta_10_to_5 + (unoccupied_offset if is_unoccupied else 0) }}"
-              preset_mode: temporary
+              mode: temporary_override
+              setpoint: "{{ new_temp | round(1) }}"
+              duration:
+                hours: "{{ _dur_h | int }}"
+                minutes: "{{ _dur_m | int }}"
+                seconds: 0
+          - service: system_log.write
+            data:
+              level: warning
+              message: >
+                [Thermo {{ thermostat_name }}] RAMSES TEMP OVERRIDE -> {{ new_temp | round(1) }}°C
+                for {{ override_duration_minutes }}m (was {{ thermostat_currentsetpoint }}°C;
+                ext {{ current_temperature }}°C; sched {{ scheduled_setpoint }}°C;
+                unocc {{ is_unoccupied }}; offset {{ unoccupied_offset }}°C)
 
       - conditions:
           - condition: template
             value_template: "{{ 0 < current_temperature <= 5 }}"
         sequence:
-          - service: climate.set_temperature
+          - variables:
+              new_temp: "{{ scheduled_setpoint + delta_5_to_0 + (unoccupied_offset if is_unoccupied else 0) }}"
+          - service: ramses_cc.set_zone_mode
             target: { entity_id: !input thermostat }
             data:
-              temperature: "{{ scheduled_setpoint + delta_5_to_0 + (unoccupied_offset if is_unoccupied else 0) }}"
-              preset_mode: temporary
+              mode: temporary_override
+              setpoint: "{{ new_temp | round(1) }}"
+              duration:
+                hours: "{{ _dur_h | int }}"
+                minutes: "{{ _dur_m | int }}"
+                seconds: 0
+          - service: system_log.write
+            data:
+              level: warning
+              message: >
+                [Thermo {{ thermostat_name }}] RAMSES TEMP OVERRIDE -> {{ new_temp | round(1) }}°C
+                for {{ override_duration_minutes }}m (was {{ thermostat_currentsetpoint }}°C;
+                ext {{ current_temperature }}°C; sched {{ scheduled_setpoint }}°C;
+                unocc {{ is_unoccupied }}; offset {{ unoccupied_offset }}°C)
 
       - conditions:
           - condition: template
             value_template: "{{ current_temperature <= 0 }}"
         sequence:
-          - service: climate.set_temperature
+          - variables:
+              new_temp: "{{ scheduled_setpoint + delta_below_0 + (unoccupied_offset if is_unoccupied else 0) }}"
+          - service: ramses_cc.set_zone_mode
             target: { entity_id: !input thermostat }
             data:
-              temperature: "{{ scheduled_setpoint + delta_below_0 + (unoccupied_offset if is_unoccupied else 0) }}"
-              preset_mode: temporary
-
-  # after 10 minutes, always revert to schedule
-  - delay: "00:10:00"
-  - service: climate.set_hvac_mode
-    target:
-      entity_id: !input thermostat
-    data:
-      hvac_mode: follow_schedule
+              mode: temporary_override
+              setpoint: "{{ new_temp | round(1) }}"
+              duration:
+                hours: "{{ _dur_h | int }}"
+                minutes: "{{ _dur_m | int }}"
+                seconds: 0
+          - service: system_log.write
+            data:
+              level: warning
+              message: >
+                [Thermo {{ thermostat_name }}] RAMSES TEMP OVERRIDE -> {{ new_temp | round(1) }}°C
+                for {{ override_duration_minutes }}m (was {{ thermostat_currentsetpoint }}°C;
+                ext {{ current_temperature }}°C; sched {{ scheduled_setpoint }}°C;
+                unocc {{ is_unoccupied }}; offset {{ unoccupied_offset }}°C)
