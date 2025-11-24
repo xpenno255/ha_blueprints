@@ -1,5 +1,5 @@
 blueprint:
-  name: Room Thermostat OT Control v1.0.2
+  name: Room Thermostat OT Control v1.0.3
   description: >
     Uses operative temperature (OT) and scheduled setpoint (as desired OT) to
     dynamically adjust the thermostat air temperature so the room "feels like"
@@ -337,4 +337,6 @@ action:
         offset {{ unoccupied_offset }}°C;
         smoothing {{ smoothing_enabled }};
         raw {{ raw_thermostat }}°C;
-        rounded {{ rounded_thermostat }}°C)
+        rounded {{ rounded_thermostat }}°C;
+        smoothed {{ smoothed_thermostat }}°C;
+        final {{ final_thermostat }}°C)
