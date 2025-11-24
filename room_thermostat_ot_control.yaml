@@ -1,10 +1,11 @@
 blueprint:
-  name: Room Thermostat OT Control v1.0.0
+  name: Room Thermostat OT Control v1.0.1
   description: >
-    Adjust a Ramses_CC thermostat setpoint so that the room's operative temperature
-    (OT / "feels like") matches the scheduled setpoint, taking into account occupancy
-    time-of-day offsets. Uses ramses_cc.set_zone_mode with temporary_override and a
-    timed duration. Scheduled setpoint is treated as the desired operative temperature.
+    Uses operative temperature (OT) and scheduled setpoint (as desired OT) to
+    dynamically adjust the thermostat air temperature so the room "feels like"
+    the scheduled value. MRT/OT and scheduled setpoint must all come from
+    input_numbers. Includes occupancy & time-of-day offsets, smoothing,
+    min/max clamp, and Ramses temporary_override.
   domain: automation
 
   input:
@@ -20,43 +21,31 @@ blueprint:
               domain: climate
 
         scheduled_setpoint:
-          name: Scheduled Setpoint Helper (Desired OT)
+          name: Scheduled Setpoint Helper (input_number)
           description: >
-            This value is treated as the desired operative ("feels like") temperature
-            for the room. The blueprint will adjust the thermostat air setpoint so
-            that measured OT tracks this value.
+            Desired operative temperature ("feels like"). This blueprint adjusts
+            the thermostat air setpoint so that the measured OT matches this value.
           selector:
             entity:
-              domain: sensor
-              device_class: temperature
+              domain: input_number
 
     comfort_inputs:
       name: '# Comfort / Temperature Inputs'
       collapsed: false
       input:
         operative_temperature:
-          name: Operative Temperature Sensor
-          description: >
-            Sensor providing the current operative / "feels like" temperature for this room.
+          name: Operative Temperature Helper (input_number)
           selector:
             entity:
-              domain: sensor
-              device_class: temperature
-
+              domain: input_number
         mrt_temperature:
-          name: Mean Radiant Temperature Sensor
-          description: >
-            Mean Radiant Temperature (MRT) for this room. Used for logging/diagnostics
-            in this version.
+          name: Mean Radiant Temperature Helper (input_number)
           selector:
             entity:
-              domain: sensor
-              device_class: temperature
+              domain: input_number
 
         min_thermostat_temp:
           name: Minimum Allowed Thermostat Setpoint
-          description: >
-            Lower bound for the thermostat air setpoint after OT correction and smoothing.
           selector:
             number:
               min: 5
@@ -66,8 +55,6 @@ blueprint:
 
         max_thermostat_temp:
           name: Maximum Allowed Thermostat Setpoint
-          description: >
-            Upper bound for the thermostat air setpoint after OT correction and smoothing.
           selector:
             number:
               min: 15
@@ -78,8 +65,8 @@ blueprint:
         smoothing_enabled:
           name: Enable Setpoint Smoothing
           description: >
-            When enabled, blends the newly calculated OT-based setpoint with the current
-            thermostat setpoint (60% new / 40% current) before rounding and clamping.
+            Blends new and current setpoint (60/40). Helps avoid jumps from rapidly
+            changing OT values. Recommended ON.
           default: true
           selector:
             boolean: {}
@@ -87,8 +74,8 @@ blueprint:
         run_interval_minutes:
           name: Run Interval (minutes)
           description: >
-            How often this automation should take effect. It is evaluated every minute,
-            but will only apply changes when the current minute is a multiple of this value.
+            Blueprint evaluates every minute, but only runs when minute % interval == 0.
+            Select between 1 and 10 minutes.
           selector:
             number:
               min: 1
@@ -108,9 +95,6 @@ blueprint:
 
         unoccupied_duration:
           name: Unoccupied Duration (min)
-          description: >
-            Room must be continuously unoccupied for at least this many minutes before
-            unoccupied offsets are applied.
           selector:
             number:
               min: 0
@@ -119,11 +103,238 @@ blueprint:
           default: 10
 
         reoccupied_duration:
-          name: Reoccupied Duration (min)
-          description: >
-            Reserved for future use (kept for compatibility). Currently not used.
+          name: Reoccupied Duration (min)  # retained for compatibility
           selector:
             number:
               min: 0
               max: 5
               step: 1
+          default: 2
+
+        weekday_morning_offset:
+          name: Weekday Morning Offset (06:30–12:00, Unoccupied)
+          selector:
+            number:
+              min: -5
+              max: 0
+              step: 0.5
+          default: -0.5
+
+        weekday_afternoon_offset:
+          name: Weekday Afternoon Offset (12:00–16:30, Unoccupied)
+          selector:
+            number:
+              min: -5
+              max: 0
+              step: 0.5
+          default: -0.5
+
+        weekday_evening_offset:
+          name: Weekday Evening Offset (16:30–22:00, Unoccupied)
+          selector:
+            number:
+              min: -5
+              max: 0
+              step: 0.5
+          default: -0.5
+
+        weekend_morning_offset:
+          name: Weekend Morning Offset (06:30–12:00, Unoccupied)
+          selector:
+            number:
+              min: -5
+              max: 0
+              step: 0.5
+          default: -0.5
+
+        weekend_afternoon_offset:
+          name: Weekend Afternoon Offset (12:00–16:30, Unoccupied)
+          selector:
+            number:
+              min: -5
+              max: 0
+              step: 0.5
+          default: -0.5
+
+        weekend_evening_offset:
+          name: Weekend Evening Offset (16:30–22:00, Unoccupied)
+          selector:
+            number:
+              min: -5
+              max: 0
+              step: 0.5
+          default: -0.5
+
+    misc_inputs:
+      name: '# Misc Inputs'
+      collapsed: false
+      input:
+        automation_delay:
+          name: Automation Delay (s)
+          selector:
+            number:
+              min: 0
+              max: 20
+              step: 1
+          default: 0
+
+        override_duration_minutes:
+          name: Temporary Override Duration (minutes)
+          selector:
+            number:
+              min: 1
+              max: 240
+              step: 1
+          default: 10
+
+mode: restart
+
+trigger:
+  - platform: time_pattern
+    minutes: "/1"
+
+variables:
+  thermostat: !input thermostat
+  scheduled_setpoint_var: !input scheduled_setpoint
+
+  operative_temperature_var: !input operative_temperature
+  mrt_temperature_var: !input mrt_temperature
+
+  min_thermostat_temp: !input min_thermostat_temp
+  max_thermostat_temp: !input max_thermostat_temp
+  smoothing_enabled: !input smoothing_enabled
+  run_interval_minutes: !input run_interval_minutes
+
+  occupancy_sensor: !input room_occupancy_sensor
+  unoccupied_duration: !input unoccupied_duration
+  weekday_morning_offset: !input weekday_morning_offset
+  weekday_afternoon_offset: !input weekday_afternoon_offset
+  weekday_evening_offset: !input weekday_evening_offset
+  weekend_morning_offset: !input weekend_morning_offset
+  weekend_afternoon_offset: !input weekend_afternoon_offset
+  weekend_evening_offset: !input weekend_evening_offset
+
+  automation_delay: !input automation_delay
+  override_duration_minutes: !input override_duration_minutes
+
+  thermostat_name: "{{ state_attr(thermostat, 'friendly_name') or thermostat }}"
+  thermostat_currentsetpoint: "{{ state_attr(thermostat, 'temperature') | float(0) }}"
+
+  scheduled_setpoint: "{{ states(scheduled_setpoint_var) | float(0) }}"
+  operative_temp: "{{ states(operative_temperature_var) | float(0) }}"
+  mrt_temp: "{{ states(mrt_temperature_var) | float(0) }}"
+
+  is_weekend: "{{ now().weekday() in [5, 6] }}"
+
+  time_period: >
+    {% set m = now().hour*60 + now().minute %}
+    {% if 390 <= m < 720 %}morning
+    {% elif 720 <= m < 990 %}afternoon
+    {% elif 990 <= m < 1320 %}evening
+    {% else %}none{% endif %}
+
+  unoccupied_offset: >
+    {% if time_period == 'morning' %}
+      {{ (is_weekend and weekend_morning_offset or weekday_morning_offset) }}
+    {% elif time_period == 'afternoon' %}
+      {{ (is_weekend and weekend_afternoon_offset or weekday_afternoon_offset) }}
+    {% elif time_period == 'evening' %}
+      {{ (is_weekend and weekend_evening_offset or weekday_evening_offset) }}
+    {% else %}0{% endif %}
+
+  is_unoccupied: >
+    {% set s = occupancy_sensor %}
+    {% if s and is_state(s, 'off') and states[s] is not none %}
+      {{ ((as_timestamp(now()) - as_timestamp(states[s].last_changed)) / 60) >= unoccupied_duration }}
+    {% else %}
+      false
+    {% endif %}
+  is_unoccupied_bool: "{{ is_unoccupied | bool }}"
+
+  _dur_h: "{{ override_duration_minutes // 60 }}"
+  _dur_m: "{{ override_duration_minutes % 60 }}"
+
+condition:
+  - condition: state
+    entity_id: input_boolean.holiday_mode
+    state: "off"
+
+  - condition: template
+    value_template: >
+      {% set interval = run_interval_minutes | int %}
+      {{ interval <= 1 or (now().minute % interval) == 0 }}
+
+action:
+  - condition: time
+    before: "22:30:00"
+    after: "06:30:00"
+
+  - delay:
+      seconds: "{{ automation_delay }}"
+
+  - variables:
+      desired_ot: >
+        {% if is_unoccupied_bool %}
+          {{ scheduled_setpoint + unoccupied_offset }}
+        {% else %}
+          {{ scheduled_setpoint }}
+        {% endif %}
+
+      raw_thermostat: >
+        {{ (2 * desired_ot - operative_temp) }}
+
+      clamped_thermostat: >
+        {% set t = raw_thermostat %}
+        {% if t < min_thermostat_temp %}
+          {{ min_thermostat_temp }}
+        {% elif t > max_thermostat_temp %}
+          {{ max_thermostat_temp }}
+        {% else %}
+          {{ t }}
+        {% endif %}
+
+      rounded_thermostat: >
+        {{ ((clamped_thermostat * 2) | round(0) / 2) }}
+
+      smoothed_thermostat: >
+        {% set t_new = rounded_thermostat %}
+        {% set t_curr = thermostat_currentsetpoint %}
+        {% if smoothing_enabled and t_curr > 0 %}
+          {{ (t_new * 0.6 + t_curr * 0.4) }}
+        {% else %}
+          {{ t_new }}
+        {% endif %}
+
+      final_thermostat: >
+        {% set t = smoothed_thermostat %}
+        {% if t < min_thermostat_temp %}
+          {% set t = min_thermostat_temp %}
+        {% elif t > max_thermostat_temp %}
+          {% set t = max_thermostat_temp %}
+        {% endif %}
+        {{ ((t * 2) | round(0) / 2) }}
+
+  - service: ramses_cc.set_zone_mode
+    target:
+      entity_id: !input thermostat
+    data:
+      mode: temporary_override
+      setpoint: "{{ final_thermostat }}"
+      duration:
+        hours: "{{ _dur_h }}"
+        minutes: "{{ _dur_m }}"
+        seconds: 0
+
+  - service: system_log.write
+    data:
+      level: warning
+      message: >
+        [Thermo {{ thermostat_name }}] OT CONTROL OVERRIDE → {{ final_thermostat }}°C
+        (sched/desired_OT {{ scheduled_setpoint }}°C;
+        OT {{ operative_temp }}°C;
+        MRT {{ mrt_temp }}°C;
+        unocc {{ is_unoccupied_bool }};
+        offset {{ unoccupied_offset }}°C;
+        smoothing {{ smoothing_enabled }};
+        raw {{ raw_thermostat }}°C;
+        rounded {{ rounded_thermostat }}°C)
