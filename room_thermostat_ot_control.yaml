@@ -1,11 +1,11 @@
 blueprint:
-  name: Room Thermostat OT Control v1.0.1
+  name: Room Thermostat OT Control v1.0.2
   description: >
     Uses operative temperature (OT) and scheduled setpoint (as desired OT) to
     dynamically adjust the thermostat air temperature so the room "feels like"
-    the scheduled value. MRT/OT and scheduled setpoint must all come from
-    input_numbers. Includes occupancy & time-of-day offsets, smoothing,
-    min/max clamp, and Ramses temporary_override.
+    the scheduled value. MRT/OT come from input_numbers. Scheduled setpoint comes
+    from a template temperature sensor. Includes occupancy & time-of-day offsets,
+    smoothing, min/max clamp, and Ramses temporary_override.
   domain: automation
 
   input:
@@ -21,13 +21,15 @@ blueprint:
               domain: climate
 
         scheduled_setpoint:
-          name: Scheduled Setpoint Helper (input_number)
+          name: Scheduled Setpoint Sensor (template sensor)
           description: >
-            Desired operative temperature ("feels like"). This blueprint adjusts
-            the thermostat air setpoint so that the measured OT matches this value.
+            This *sensor* (not input_number) provides the desired operative
+            temperature ("feels like") for the room.
+            It must be a numeric temperature sensor (device_class = temperature).
           selector:
             entity:
-              domain: input_number
+              domain: sensor
+              device_class: temperature
 
     comfort_inputs:
       name: '# Comfort / Temperature Inputs'
@@ -38,6 +40,7 @@ blueprint:
           selector:
             entity:
               domain: input_number
+
         mrt_temperature:
           name: Mean Radiant Temperature Helper (input_number)
           selector:
@@ -65,17 +68,14 @@ blueprint:
         smoothing_enabled:
           name: Enable Setpoint Smoothing
           description: >
-            Blends new and current setpoint (60/40). Helps avoid jumps from rapidly
-            changing OT values. Recommended ON.
-          default: true
+            Smooths setpoint changes (60% new / 40% current). Helps avoid sudden jumps.
           selector:
             boolean: {}
+          default: true
 
         run_interval_minutes:
           name: Run Interval (minutes)
-          description: >
-            Blueprint evaluates every minute, but only runs when minute % interval == 0.
-            Select between 1 and 10 minutes.
+          description: Runs every N minutes (1–10).
           selector:
             number:
               min: 1
@@ -244,7 +244,7 @@ variables:
 
   is_unoccupied: >
     {% set s = occupancy_sensor %}
-    {% if s and is_state(s, 'off') and states[s] is not none %}
+    {% if s and is_state(s, 'off') %}
       {{ ((as_timestamp(now()) - as_timestamp(states[s].last_changed)) / 60) >= unoccupied_duration }}
     {% else %}
       false
