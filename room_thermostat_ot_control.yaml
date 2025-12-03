@@ -1,5 +1,5 @@
 blueprint:
-  name: Room Thermostat OT Control v1.0.6
+  name: Room Thermostat OT Control v1.0.7
   description: >
     Uses operative temperature (OT) and scheduled setpoint (as desired OT) to
     dynamically adjust the thermostat air temperature so the room "feels like"
