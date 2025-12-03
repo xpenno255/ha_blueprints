@@ -1,5 +1,5 @@
 blueprint:
-  name: Room Thermostat OT Control v1.0.5
+  name: Room Thermostat OT Control v1.0.6
   description: >
     Uses operative temperature (OT) and scheduled setpoint (as desired OT) to
     dynamically adjust the thermostat air temperature so the room "feels like"
@@ -299,15 +299,22 @@ action:
       smoothed_thermostat: >
         {% set t_new = rounded_thermostat | float %}
         {% set t_curr = thermostat_currentsetpoint | float %}
-        {% set last = states[thermostat].last_changed if thermostat in states else none %}
+
+        {# Robustly fetch last_changed with full safety guards #}
+        {% if thermostat in states and states[thermostat].last_changed is not none %}
+          {% set last = states[thermostat].last_changed %}
+        {% else %}
+          {% set last = now() %}
+        {% endif %}
+
+        {# Now safe: last always resolves to a valid datetime object #}
         {% set age = (as_timestamp(now()) - as_timestamp(last)) | float(9999) %}
 
         {# Apply smoothing ONLY when:
            - smoothing is enabled
-           - current setpoint is >5°C (avoids invalid states)
-           - thermostat state is older than 180 seconds (avoids reboot drop)
+           - current setpoint is > 5°C
+           - entity state has been stable for > 180 seconds
         #}
-
         {% if smoothing_enabled
               and t_curr > 5
               and age > 180 %}
@@ -315,6 +322,7 @@ action:
         {% else %}
           {{ t_new }}
         {% endif %}
+
 
 
       final_thermostat: >
