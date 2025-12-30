@@ -1,5 +1,5 @@
 blueprint:
-  name: Room Thermostat OT Control v1.0.7
+  name: Room Thermostat OT Control v1.0.8
   description: >
     Uses operative temperature (OT) and scheduled setpoint (as desired OT) to
     dynamically adjust the thermostat air temperature so the room "feels like"
@@ -169,6 +169,15 @@ blueprint:
       name: '# Misc Inputs'
       collapsed: false
       input:
+        at_home_mode:
+          name: At Home Mode
+          description: >
+            When enabled, uses weekend schedule regardless of actual day.
+            Use this when off work to follow weekend setpoints.
+          selector:
+            entity:
+              domain: input_boolean
+
         automation_delay:
           name: Automation Delay (s)
           selector:
@@ -216,6 +225,7 @@ variables:
 
   automation_delay: !input automation_delay
   override_duration_minutes: !input override_duration_minutes
+  at_home_mode_var: !input at_home_mode
 
   thermostat_name: "{{ state_attr(thermostat, 'friendly_name') or thermostat }}"
   thermostat_currentsetpoint: "{{ state_attr(thermostat, 'temperature') | float(0) }}"
@@ -224,7 +234,8 @@ variables:
   operative_temp: "{{ states(operative_temperature_var) | float(0) }}"
   mrt_temp: "{{ states(mrt_temperature_var) | float(0) }}"
 
-  is_weekend: "{{ now().weekday() in [5, 6] }}"
+  at_home_mode_enabled: "{{ is_state(at_home_mode_var, 'on') }}"
+  is_weekend: "{{ now().weekday() in [5, 6] or at_home_mode_enabled }}"
 
   time_period: >
     {% set m = now().hour*60 + now().minute %}
@@ -353,6 +364,7 @@ action:
         (sched/desired_OT {{ scheduled_setpoint }}°C;
         OT {{ operative_temp }}°C;
         MRT {{ mrt_temp }}°C;
+        at_home_mode {{ at_home_mode_enabled }};
         unocc {{ is_unoccupied_bool }};
         offset {{ unoccupied_offset }}°C;
         smoothing {{ smoothing_enabled }};
