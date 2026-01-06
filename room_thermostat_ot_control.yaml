@@ -1,11 +1,13 @@
 blueprint:
-  name: Room Thermostat OT Control v1.0.9
+  name: Room Thermostat OT Control v1.1.0
   description: >
     Uses operative temperature (OT) and scheduled setpoint (as desired OT) to
     dynamically adjust the thermostat air temperature so the room "feels like"
     the scheduled value. MRT/OT come from input_numbers. Scheduled setpoint comes
     from a template temperature sensor. Includes occupancy & time-of-day offsets,
     smoothing, min/max clamp, and Ramses temporary_override.
+    v1.0.9 adds: (1) correction gain (k) and (2) per-run setpoint change cap, and
+    fixes occupancy offset doubling by halving it at the desired_OT stage.
   domain: automation
 
   input:
@@ -82,6 +84,31 @@ blueprint:
               max: 10
               step: 1
           default: 2
+
+        correction_gain:
+          name: OT Correction Gain (k)
+          description: >
+            Proportion of OT error to apply. 1.0 = full correction (original behaviour).
+            Typical: 0.25–0.6. Start around 0.4 (responsive rooms) or 0.5 (high MRT-lag rooms).
+          selector:
+            number:
+              min: 0
+              max: 1
+              step: 0.05
+          default: 0.4
+
+        max_step_per_run:
+          name: Max Setpoint Step per Run (°C)
+          description: >
+            Limits how much the thermostat setpoint can change each time the automation runs.
+            Helps Evohome avoid large swings. Use 0.5°C to match Evohome steps.
+            Set to 0 to disable rate limiting.
+          selector:
+            number:
+              min: 0
+              max: 2
+              step: 0.5
+          default: 0.5
 
     occupancy_inputs:
       name: '# Occupancy Inputs'
@@ -214,6 +241,9 @@ variables:
   smoothing_enabled: !input smoothing_enabled
   run_interval_minutes: !input run_interval_minutes
 
+  correction_gain: !input correction_gain
+  max_step_per_run: !input max_step_per_run
+
   occupancy_sensor: !input room_occupancy_sensor
   unoccupied_duration: !input unoccupied_duration
   weekday_morning_offset: !input weekday_morning_offset
@@ -284,6 +314,8 @@ action:
       seconds: "{{ automation_delay }}"
 
   - variables:
+      # desired_ot is the "feels like" target. When unoccupied, we apply HALF the unoccupied_offset here
+      # so that it is not doubled by the OT correction maths (Evohome setpoint impact equals unoccupied_offset).
       desired_ot: >
         {% if is_unoccupied_bool %}
           {{ scheduled_setpoint + (unoccupied_offset / 2) }}
@@ -291,8 +323,11 @@ action:
           {{ scheduled_setpoint }}
         {% endif %}
 
+      # Gain-based OT correction:
+      # raw_thermostat = desired_ot + k*(desired_ot - operative_temp)
       raw_thermostat: >
-        {{ (2 * desired_ot - operative_temp) }}
+        {% set k = correction_gain | float(0.4) %}
+        {{ desired_ot + (k * (desired_ot - operative_temp)) }}
 
       clamped_thermostat: >
         {% set t = raw_thermostat | float %}
@@ -307,8 +342,28 @@ action:
       rounded_thermostat: >
         {{ ((clamped_thermostat * 2) | round(0) / 2) }}
 
-      smoothed_thermostat: >
+      # Rate limit the change per run to avoid big swings (Evohome-friendly ramp).
+      rate_limited_thermostat: >
         {% set t_new = rounded_thermostat | float %}
+        {% set t_curr = thermostat_currentsetpoint | float(0) %}
+        {% set step = max_step_per_run | float(0.5) %}
+
+        {% if step <= 0 or t_curr <= 0 %}
+          {{ t_new }}
+        {% else %}
+          {% set lo = t_curr - step %}
+          {% set hi = t_curr + step %}
+          {% if t_new < lo %}
+            {{ lo }}
+          {% elif t_new > hi %}
+            {{ hi }}
+          {% else %}
+            {{ t_new }}
+          {% endif %}
+        {% endif %}
+
+      smoothed_thermostat: >
+        {% set t_new = rate_limited_thermostat | float %}
         {% set t_curr = thermostat_currentsetpoint | float %}
 
         {# Robustly fetch last_changed with full safety guards #}
@@ -334,10 +389,8 @@ action:
           {{ t_new }}
         {% endif %}
 
-
-
       final_thermostat: >
-        {% set t = smoothed_thermostat %}
+        {% set t = smoothed_thermostat | float %}
         {% if t < min_thermostat_temp %}
           {% set t = min_thermostat_temp %}
         {% elif t > max_thermostat_temp %}
@@ -361,14 +414,18 @@ action:
       level: warning
       message: >
         [Thermo {{ thermostat_name }}] OT CONTROL OVERRIDE → {{ final_thermostat }}°C
-        (sched/desired_OT {{ scheduled_setpoint }}°C;
+        (sched {{ scheduled_setpoint }}°C;
+        desired_OT {{ desired_ot }}°C;
         OT {{ operative_temp }}°C;
         MRT {{ mrt_temp }}°C;
+        k {{ correction_gain }};
+        max_step_per_run {{ max_step_per_run }}°C;
         at_home_mode {{ at_home_mode_enabled }};
         unocc {{ is_unoccupied_bool }};
-        offset {{ unoccupied_offset }}°C;
+        unocc_offset {{ unoccupied_offset }}°C;
         smoothing {{ smoothing_enabled }};
         raw {{ raw_thermostat }}°C;
         rounded {{ rounded_thermostat }}°C;
+        rate_limited {{ rate_limited_thermostat }}°C;
         smoothed {{ smoothed_thermostat }}°C;
         final {{ final_thermostat }}°C)
