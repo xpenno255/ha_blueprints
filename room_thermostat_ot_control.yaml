@@ -1,13 +1,15 @@
 blueprint:
-  name: Room Thermostat OT Control v1.1.0
+  name: Room Thermostat OT Control v1.1.1
   description: >
     Uses operative temperature (OT) and scheduled setpoint (as desired OT) to
     dynamically adjust the thermostat air temperature so the room "feels like"
-    the scheduled value. MRT/OT come from input_numbers. Scheduled setpoint comes
-    from a template temperature sensor. Includes occupancy & time-of-day offsets,
+    the scheduled value. MRT/OT come from input_numbers or temperature sensors.
+    Scheduled setpoint comes from a template temperature sensor. Includes
+    at_home_mode for weekend schedule override, occupancy & time-of-day offsets,
     smoothing, min/max clamp, and Ramses temporary_override.
     v1.0.9 adds: (1) correction gain (k) and (2) per-run setpoint change cap, and
     fixes occupancy offset doubling by halving it at the desired_OT stage.
+    v1.1.1 adds: MRT/OT can now be input_number or temperature sensor entities.
   domain: automation
 
   input:
@@ -38,16 +40,28 @@ blueprint:
       collapsed: false
       input:
         operative_temperature:
-          name: Operative Temperature Helper (input_number)
+          name: Operative Temperature (input_number or sensor)
+          description: >
+            The current operative temperature ("feels like") for the room.
+            Can be an input_number helper or a temperature sensor.
           selector:
             entity:
-              domain: input_number
+              domain:
+                - input_number
+                - sensor
+              device_class: temperature
 
         mrt_temperature:
-          name: Mean Radiant Temperature Helper (input_number)
+          name: Mean Radiant Temperature (input_number or sensor)
+          description: >
+            The current mean radiant temperature for the room.
+            Can be an input_number helper or a temperature sensor.
           selector:
             entity:
-              domain: input_number
+              domain:
+                - input_number
+                - sensor
+              device_class: temperature
 
         min_thermostat_temp:
           name: Minimum Allowed Thermostat Setpoint
