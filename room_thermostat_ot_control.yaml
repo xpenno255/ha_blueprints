@@ -1,5 +1,5 @@
 blueprint:
-  name: Room Thermostat OT Control v1.2.0
+  name: Room Thermostat OT Control v1.1.1
   description: >
     Uses operative temperature (OT) and scheduled setpoint (as desired OT) to
     dynamically adjust the thermostat air temperature so the room "feels like"
@@ -10,9 +10,6 @@ blueprint:
     v1.0.9 adds: (1) correction gain (k) and (2) per-run setpoint change cap, and
     fixes occupancy offset doubling by halving it at the desired_OT stage.
     v1.1.1 adds: MRT/OT can now be input_number or temperature sensor entities.
-    v1.2.0 adds: Sensor offset compensation — reads Evohome's current_temperature
-    and adds the difference vs OT sensor to the setpoint. Eliminates steady-state
-    droop caused by Evohome's thermostat reading warmer than the room centre.
   domain: automation
 
   input:
@@ -276,7 +273,6 @@ variables:
 
   thermostat_name: "{{ state_attr(thermostat, 'friendly_name') or thermostat }}"
   thermostat_currentsetpoint: "{{ state_attr(thermostat, 'temperature') | float(0) }}"
-  evohome_current_temp: "{{ state_attr(thermostat, 'current_temperature') | float(0) }}"
 
   scheduled_setpoint: "{{ states(scheduled_setpoint_var) | float(0) }}"
   operative_temp: "{{ states(operative_temperature_var) | float(0) }}"
@@ -332,20 +328,6 @@ action:
       seconds: "{{ automation_delay }}"
 
   - variables:
-      # Sensor offset: compensates for Evohome's thermostat (often near the radiator)
-      # reading a different temperature than the room OT sensor (typically room centre).
-      # Without this, Evohome under-calls the boiler because it thinks the room is warmer
-      # than it actually is. Capped at ±3°C; disabled if either sensor reads below 5°C.
-      sensor_offset: >
-        {% set evo = evohome_current_temp | float(0) %}
-        {% set ot = operative_temp | float(0) %}
-        {% if evo >= 5 and ot >= 5 %}
-          {% set raw_offset = evo - ot %}
-          {{ [[-3, raw_offset] | max, 3] | min }}
-        {% else %}
-          0
-        {% endif %}
-
       # desired_ot is the "feels like" target. When unoccupied, we apply HALF the unoccupied_offset here
       # so that it is not doubled by the OT correction maths (Evohome setpoint impact equals unoccupied_offset).
       desired_ot: >
@@ -355,13 +337,11 @@ action:
           {{ scheduled_setpoint }}
         {% endif %}
 
-      # Gain-based OT correction + sensor offset compensation:
-      # raw_thermostat = desired_ot + k*(desired_ot - operative_temp) + sensor_offset
-      # The sensor_offset term ensures Evohome sees the correct delta between setpoint
-      # and its own sensor, eliminating steady-state droop from sensor placement.
+      # Gain-based OT correction:
+      # raw_thermostat = desired_ot + k*(desired_ot - operative_temp)
       raw_thermostat: >
         {% set k = correction_gain | float(0.4) %}
-        {{ desired_ot + (k * (desired_ot - operative_temp)) + (sensor_offset | float(0)) }}
+        {{ desired_ot + (k * (desired_ot - operative_temp)) }}
 
       clamped_thermostat: >
         {% set t = raw_thermostat | float %}
@@ -452,8 +432,6 @@ action:
         desired_OT {{ desired_ot }}°C;
         OT {{ operative_temp }}°C;
         MRT {{ mrt_temp }}°C;
-        evo_temp {{ evohome_current_temp }}°C;
-        sensor_offset {{ sensor_offset }}°C;
         k {{ correction_gain }};
         max_step_per_run {{ max_step_per_run }}°C;
         at_home_mode {{ at_home_mode_enabled }};
