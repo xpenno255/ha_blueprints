@@ -1,5 +1,5 @@
 blueprint:
-  name: Room Thermostat OT Control v1.1.1
+  name: Room Thermostat OT Control v1.2.0
   description: >
     Uses operative temperature (OT) and scheduled setpoint (as desired OT) to
     dynamically adjust the thermostat air temperature so the room "feels like"
@@ -10,6 +10,9 @@ blueprint:
     v1.0.9 adds: (1) correction gain (k) and (2) per-run setpoint change cap, and
     fixes occupancy offset doubling by halving it at the desired_OT stage.
     v1.1.1 adds: MRT/OT can now be input_number or temperature sensor entities.
+    v1.2.0 adds: optional independent sensor compensation — when the Evohome zone
+    sensor (TRV) reads higher than an independent room sensor, the final setpoint
+    is boosted by the delta to compensate for TRV sensor overread.
   domain: automation
 
   input:
@@ -123,6 +126,59 @@ blueprint:
               max: 2
               step: 0.5
           default: 0.5
+
+    sensor_compensation_inputs:
+      name: '# Independent Sensor Compensation'
+      collapsed: true
+      input:
+        enable_sensor_compensation:
+          name: Enable Sensor Compensation
+          description: >
+            When enabled, compares the Evohome zone temperature (TRV sensor) against
+            an independent room temperature sensor. If the zone sensor reads higher
+            than the independent sensor, the final setpoint is boosted by the
+            difference to compensate for TRV sensor overread (e.g. radiant heat
+            near the radiator warming the TRV). The boost naturally reduces as
+            temperatures converge. Requires an independent sensor to be selected.
+          selector:
+            boolean: {}
+          default: false
+
+        independent_temp_sensor:
+          name: Independent Temperature Sensor
+          description: >
+            An independent room temperature sensor (e.g. Govee H5075, Aqara, etc.)
+            placed away from radiators for accurate room temperature reading.
+            Only used when sensor compensation is enabled. Leave blank if not needed.
+          default: ""
+          selector:
+            entity:
+              domain: sensor
+              device_class: temperature
+
+        sensor_compensation_gain:
+          name: Sensor Compensation Gain
+          description: >
+            Fraction of the sensor delta to apply. 1.0 = full delta, 0.5 = half.
+            Lower values give gentler compensation. Start at 0.75.
+          selector:
+            number:
+              min: 0.25
+              max: 1.0
+              step: 0.05
+          default: 0.75
+
+        max_sensor_compensation:
+          name: Max Sensor Compensation (C)
+          description: >
+            Maximum additional setpoint boost from sensor compensation.
+            Prevents runaway if the independent sensor goes stale or has a large offset.
+          selector:
+            number:
+              min: 0.5
+              max: 3.0
+              step: 0.5
+          default: 1.5
 
     occupancy_inputs:
       name: '# Occupancy Inputs'
@@ -258,6 +314,11 @@ variables:
   correction_gain: !input correction_gain
   max_step_per_run: !input max_step_per_run
 
+  sensor_comp_enabled: !input enable_sensor_compensation
+  independent_temp_sensor_var: !input independent_temp_sensor
+  sensor_comp_gain: !input sensor_compensation_gain
+  max_sensor_comp: !input max_sensor_compensation
+
   occupancy_sensor: !input room_occupancy_sensor
   unoccupied_duration: !input unoccupied_duration
   weekday_morning_offset: !input weekday_morning_offset
@@ -273,6 +334,7 @@ variables:
 
   thermostat_name: "{{ state_attr(thermostat, 'friendly_name') or thermostat }}"
   thermostat_currentsetpoint: "{{ state_attr(thermostat, 'temperature') | float(0) }}"
+  evohome_zone_temp: "{{ state_attr(thermostat, 'current_temperature') | float(0) }}"
 
   scheduled_setpoint: "{{ states(scheduled_setpoint_var) | float(0) }}"
   operative_temp: "{{ states(operative_temperature_var) | float(0) }}"
@@ -412,12 +474,42 @@ action:
         {% endif %}
         {{ ((t * 2) | round(0) / 2) }}
 
+      # Independent sensor compensation: applied AFTER all OT/comfort calculations.
+      # Compares the Evohome zone sensor (TRV) against an independent room sensor.
+      # Only boosts when the zone sensor reads higher (positive delta).
+      sensor_compensation: >
+        {% if sensor_comp_enabled and independent_temp_sensor_var not in ['', None, 'unknown'] %}
+          {% set ind_temp = states(independent_temp_sensor_var) | float(-999) %}
+          {% set zone_temp = evohome_zone_temp | float(0) %}
+          {% if ind_temp > 5 and zone_temp > 5 %}
+            {% set delta = zone_temp - ind_temp %}
+            {% if delta > 0 %}
+              {{ [delta * (sensor_comp_gain | float(0.75)), max_sensor_comp | float(1.5)] | min }}
+            {% else %}
+              0
+            {% endif %}
+          {% else %}
+            0
+          {% endif %}
+        {% else %}
+          0
+        {% endif %}
+
+      output_thermostat: >
+        {% set t = (final_thermostat | float) + (sensor_compensation | float) %}
+        {% if t < min_thermostat_temp %}
+          {% set t = min_thermostat_temp %}
+        {% elif t > max_thermostat_temp %}
+          {% set t = max_thermostat_temp %}
+        {% endif %}
+        {{ ((t * 2) | round(0) / 2) }}
+
   - service: ramses_cc.set_zone_mode
     target:
       entity_id: !input thermostat
     data:
       mode: temporary_override
-      setpoint: "{{ final_thermostat }}"
+      setpoint: "{{ output_thermostat }}"
       duration:
         hours: "{{ _dur_h }}"
         minutes: "{{ _dur_m }}"
@@ -427,7 +519,7 @@ action:
     data:
       level: warning
       message: >
-        [Thermo {{ thermostat_name }}] OT CONTROL OVERRIDE → {{ final_thermostat }}°C
+        [Thermo {{ thermostat_name }}] OT CONTROL OVERRIDE → {{ output_thermostat }}°C
         (sched {{ scheduled_setpoint }}°C;
         desired_OT {{ desired_ot }}°C;
         OT {{ operative_temp }}°C;
@@ -442,4 +534,8 @@ action:
         rounded {{ rounded_thermostat }}°C;
         rate_limited {{ rate_limited_thermostat }}°C;
         smoothed {{ smoothed_thermostat }}°C;
-        final {{ final_thermostat }}°C)
+        final {{ final_thermostat }}°C;
+        sensor_comp {{ sensor_compensation }}°C;
+        zone_temp {{ evohome_zone_temp }}°C;
+        ind_temp {{ states(independent_temp_sensor_var) if independent_temp_sensor_var else 'n/a' }}°C;
+        output {{ output_thermostat }}°C)
