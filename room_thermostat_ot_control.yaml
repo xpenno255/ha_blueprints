@@ -1,5 +1,5 @@
 blueprint:
-  name: Room Thermostat OT Control v1.3.0
+  name: Room Thermostat OT Control v1.3.1
   description: >
     Uses operative temperature (OT) and scheduled setpoint (as desired OT) to
     dynamically adjust the thermostat air temperature so the room "feels like"
@@ -10,10 +10,9 @@ blueprint:
     v1.0.9 adds: (1) correction gain (k) and (2) per-run setpoint change cap, and
     fixes occupancy offset doubling by halving it at the desired_OT stage.
     v1.1.1 adds: MRT/OT can now be input_number or temperature sensor entities.
-    v1.3.0 adds: Backup thermostat fallback — if the primary ramses_cc entity stops
-    updating (stale for N minutes), automatically switches to a cloud-based backup
-    (e.g. Honeywell Total Connect Comfort) for both reading temperature and setting
-    setpoints, preventing runaway heating from stale sensor data.
+    v1.3.1 adds: Backup thermostat fallback — automatically uses whichever thermostat
+    (primary ramses_cc or cloud backup e.g. Honeywell Total Connect Comfort) reported
+    most recently, preventing runaway heating from stale sensor data.
   domain: automation
 
   input:
@@ -37,18 +36,6 @@ blueprint:
           selector:
             entity:
               domain: climate
-
-        stale_threshold_minutes:
-          name: Stale Sensor Threshold (minutes)
-          description: >
-            If the primary thermostat entity hasn't updated for this many minutes,
-            switch to the backup thermostat for reading temperature and setting setpoints.
-          selector:
-            number:
-              min: 5
-              max: 30
-              step: 1
-          default: 10
 
         scheduled_setpoint:
           name: Scheduled Setpoint Sensor (template sensor)
@@ -272,7 +259,6 @@ trigger:
 variables:
   thermostat: !input thermostat
   backup_thermostat: !input backup_thermostat
-  stale_threshold_minutes: !input stale_threshold_minutes
   scheduled_setpoint_var: !input scheduled_setpoint
 
   operative_temperature_var: !input operative_temperature
@@ -301,24 +287,34 @@ variables:
 
   thermostat_name: "{{ state_attr(thermostat, 'friendly_name') or thermostat }}"
 
-  # Staleness detection: check if ramses_cc entity has updated recently.
-  # If stale or unavailable, fall back to the cloud backup thermostat.
-  is_primary_stale: >
-    {% if states(thermostat) in ['unavailable', 'unknown'] %}
-      true
-    {% elif thermostat in states and states[thermostat].last_updated is not none %}
-      {{ ((as_timestamp(now()) - as_timestamp(states[thermostat].last_updated)) / 60)
-         > (stale_threshold_minutes | float(10)) }}
+  # Pick whichever thermostat reported most recently.
+  # Uses last_reported (HA 2024.4+), falling back to last_updated.
+  # If both entities are the same, or the backup is unavailable, always use primary.
+  _primary_ts: >
+    {% set e = states[thermostat] if thermostat in states else none %}
+    {% if e is none or states(thermostat) in ['unavailable', 'unknown'] %}
+      0
+    {% elif e.last_reported is defined and e.last_reported is not none %}
+      {{ as_timestamp(e.last_reported) }}
+    {% elif e.last_updated is not none %}
+      {{ as_timestamp(e.last_updated) }}
     {% else %}
-      true
+      0
     {% endif %}
-  is_primary_stale_bool: "{{ is_primary_stale | bool }}"
-
-  # Use backup thermostat when primary is stale (and backup is a different entity)
-  using_backup: >
-    {{ is_primary_stale_bool and backup_thermostat != thermostat
-       and states(backup_thermostat) not in ['unavailable', 'unknown'] }}
-  using_backup_bool: "{{ using_backup | bool }}"
+  _backup_ts: >
+    {% set e = states[backup_thermostat] if backup_thermostat in states else none %}
+    {% if e is none or states(backup_thermostat) in ['unavailable', 'unknown'] %}
+      0
+    {% elif e.last_reported is defined and e.last_reported is not none %}
+      {{ as_timestamp(e.last_reported) }}
+    {% elif e.last_updated is not none %}
+      {{ as_timestamp(e.last_updated) }}
+    {% else %}
+      0
+    {% endif %}
+  using_backup_bool: >
+    {{ backup_thermostat != thermostat
+       and (_backup_ts | float(0)) > (_primary_ts | float(0)) }}
   active_thermostat: "{{ using_backup_bool and backup_thermostat or thermostat }}"
 
   thermostat_currentsetpoint: "{{ state_attr(active_thermostat, 'temperature') | float(0) }}"
@@ -501,7 +497,6 @@ action:
         unocc_offset {{ unoccupied_offset }}°C;
         smoothing {{ smoothing_enabled }};
         backup {{ using_backup_bool }};
-        stale {{ is_primary_stale_bool }};
         raw {{ raw_thermostat }}°C;
         rounded {{ rounded_thermostat }}°C;
         rate_limited {{ rate_limited_thermostat }}°C;
