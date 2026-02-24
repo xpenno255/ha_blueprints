@@ -1,20 +1,61 @@
 blueprint:
-  name: Room Thermostat OT Control v1.3.1
-  description: >
-    Uses operative temperature (OT) and scheduled setpoint (as desired OT) to
-    dynamically adjust the thermostat air temperature so the room "feels like"
-    the scheduled value. MRT/OT come from input_numbers or temperature sensors.
-    Scheduled setpoint comes from a template temperature sensor. Includes
-    at_home_mode for weekend schedule override, occupancy & time-of-day offsets,
-    smoothing, min/max clamp, and Ramses temporary_override.
-    v1.0.9 adds: (1) correction gain (k) and (2) per-run setpoint change cap, and
-    fixes occupancy offset doubling by halving it at the desired_OT stage.
-    v1.1.1 adds: MRT/OT can now be input_number or temperature sensor entities.
-    v1.3.1 adds: Backup thermostat fallback — automatically uses whichever thermostat
-    (primary ramses_cc or cloud backup e.g. Honeywell Total Connect Comfort) reported
-    most recently, preventing runaway heating from stale sensor data.
-  domain: automation
+  name: Room Thermostat OT Control v1.5.0
+  description: 'Uses operative temperature (OT) and scheduled setpoint (as desired
+    OT) to dynamically adjust the thermostat air temperature so the room "feels like"
+    the scheduled value. MRT/OT come from input_numbers or temperature sensors. Scheduled
+    setpoint comes from a template temperature sensor. Includes at_home_mode for weekend
+    schedule override, occupancy & time-of-day offsets, smoothing, min/max clamp,
+    and Ramses temporary_override. v1.0.9 adds: (1) correction gain (k) and (2) per-run
+    setpoint change cap, and fixes occupancy offset doubling by halving it at the
+    desired_OT stage. v1.1.1 adds: MRT/OT can now be input_number or temperature sensor
+    entities. v1.3.1 adds: Backup thermostat fallback — automatically uses whichever
+    thermostat (primary ramses_cc or cloud backup e.g. Honeywell Total Connect Comfort)
+    reported most recently, preventing runaway heating from stale sensor data.
+    v1.4.0: Correction now uses MRT-based error (desired_OT - MRT) instead of
+    OT-based error (desired_OT - OT). Eliminates steady-state under-compensation
+    caused by proportional-only feedback on OT. For still air (A=0.5), k=1.0
+    gives zero steady-state error. Existing k values remain valid.
+    v1.4.1: Setpoint rounding changed from 0.5°C to 0.1°C. Evohome accepts
+    0.1°C setpoints via RAMSES II protocol despite 0.5°C physical UI steps.
+    Improves control precision and reduces energy waste from over-rounding.
+    v1.4.2: (1) Override duration default increased to 60 min to prevent
+    sawtooth resets when evohome schedule kicks in after short overrides.
+    (2) Trigger now fires at the actual run interval instead of every minute
+    with a condition gate — cleaner logs and fewer wasted triggers.
+    (3) Confirmation check after setting thermostat — waits 5s and verifies
+    the setpoint was applied, retries once if not, and logs the result.
+    v1.4.3: ramses_cc.set_zone_mode now ALWAYS called on the primary
+    thermostat. The backup (cloud) entity is now read-only — used only
+    as a fallback data source for current temperature/setpoint when
+    ramses_cc data is stale. Setpoints are NEVER written via the cloud
+    entity, preserving 0.1C precision and internet-free operation.
+    Previously, using the backup path called climate.set_temperature
+    on the cloud entity instead of ramses_cc, which skipped the
+    override timer refresh and caused 60-minute periodic resets.
+    v1.4.4: Pre-heat awareness. Detects when evohome is running its
+    optimum start (pre-heating before a schedule switchpoint) by
+    reading the zone schedule from the entity attributes. When the
+    current time is before the first switchpoint, the zone is heating,
+    and the zone setpoint is above the schedule sensor value, the
+    automation uses the upcoming switchpoint setpoint as the target
+    instead of the stale schedule sensor. Prevents the automation from
+    fighting evohome pre-heat and then having to ramp back up.
+    v1.4.5: Simplified confirmation to log-only. Removed the retry
+    logic that sent a second set_zone_mode call when confirmation
+    failed within 5s. The retry was firing frequently (RAMSES RF
+    round-trip often exceeds 5s) and double-calls may have confused
+    evohome. Confirmation status still logged for diagnostics.
+    v1.5.0: Dynamic k scaling. The correction gain (k) now scales with
+    the MRT-to-target gap using reference_delta=2.0. When MRT is close
+    to desired_OT, k reduces towards zero (less correction needed).
+    When MRT is 2+ degrees from target, k reaches k_max (full correction).
+    Formula: k_eff = k_max * min(|desired_OT - MRT| / 2.0, 1.0).
+    The configured k value now acts as the maximum for the zone.
+    Prevents over-correction on mild days while maintaining full
+    response on cold days. Log now shows k_max and k_eff.
 
+    '
+  domain: automation
   input:
     thermostat_inputs:
       name: '# Thermostat / Schedule Inputs'
@@ -25,118 +66,146 @@ blueprint:
           selector:
             entity:
               integration: ramses_cc
-              domain: climate
-
+              domain:
+              - climate
+              multiple: false
+              reorder: false
         backup_thermostat:
           name: Backup Thermostat (Honeywell cloud climate)
-          description: >
-            Cloud-based climate entity for the same zone (e.g. from Total Connect Comfort).
-            Used as fallback when ramses_cc stops updating. If you don't have a cloud
-            integration, set this to the same entity as the primary thermostat.
+          description: 'Cloud-based climate entity for the same zone (e.g. from Total
+            Connect Comfort). Used as fallback when ramses_cc stops updating. If you
+            don''t have a cloud integration, set this to the same entity as the primary
+            thermostat.
+
+            '
           selector:
             entity:
-              domain: climate
-
+              domain:
+              - climate
+              multiple: false
+              reorder: false
         scheduled_setpoint:
           name: Scheduled Setpoint Sensor (template sensor)
-          description: >
-            This *sensor* (not input_number) provides the desired operative
-            temperature ("feels like") for the room.
-            It must be a numeric temperature sensor (device_class = temperature).
+          description: 'This *sensor* (not input_number) provides the desired operative
+            temperature ("feels like") for the room. It must be a numeric temperature
+            sensor (device_class = temperature).
+
+            '
           selector:
             entity:
-              domain: sensor
-              device_class: temperature
-
+              domain:
+              - sensor
+              device_class:
+              - temperature
+              multiple: false
+              reorder: false
     comfort_inputs:
       name: '# Comfort / Temperature Inputs'
       collapsed: false
       input:
         operative_temperature:
           name: Operative Temperature (input_number or sensor)
-          description: >
-            The current operative temperature ("feels like") for the room.
+          description: 'The current operative temperature ("feels like") for the room.
             Can be an input_number helper or a temperature sensor.
+
+            '
           selector:
             entity:
               domain:
-                - input_number
-                - sensor
-              device_class: temperature
-
+              - input_number
+              - sensor
+              device_class:
+              - temperature
+              multiple: false
+              reorder: false
         mrt_temperature:
           name: Mean Radiant Temperature (input_number or sensor)
-          description: >
-            The current mean radiant temperature for the room.
-            Can be an input_number helper or a temperature sensor.
+          description: 'The current mean radiant temperature for the room. Can be
+            an input_number helper or a temperature sensor.
+
+            '
           selector:
             entity:
               domain:
-                - input_number
-                - sensor
-              device_class: temperature
-
+              - input_number
+              - sensor
+              device_class:
+              - temperature
+              multiple: false
+              reorder: false
         min_thermostat_temp:
           name: Minimum Allowed Thermostat Setpoint
           selector:
             number:
-              min: 5
-              max: 20
+              min: 5.0
+              max: 20.0
               step: 0.5
+              mode: slider
           default: 10
-
         max_thermostat_temp:
           name: Maximum Allowed Thermostat Setpoint
           selector:
             number:
-              min: 15
-              max: 30
+              min: 15.0
+              max: 30.0
               step: 0.5
+              mode: slider
           default: 23
-
         smoothing_enabled:
           name: Enable Setpoint Smoothing
-          description: >
-            Smooths setpoint changes (60% new / 40% current). Helps avoid sudden jumps.
+          description: 'Smooths setpoint changes (60% new / 40% current). Helps avoid
+            sudden jumps.
+
+            '
           selector:
             boolean: {}
           default: true
-
-        run_interval_minutes:
-          name: Run Interval (minutes)
-          description: Runs every N minutes (1–10).
+        run_interval_pattern:
+          name: Run Interval
+          description: How often the automation fires. Uses time_pattern trigger
+            directly — no wasted triggers between runs.
           selector:
-            number:
-              min: 1
-              max: 10
-              step: 1
-          default: 2
-
+            select:
+              options:
+              - label: Every minute
+                value: /1
+              - label: Every 2 minutes
+                value: /2
+              - label: Every 3 minutes
+                value: /3
+              - label: Every 5 minutes
+                value: /5
+              - label: Every 10 minutes
+                value: /10
+          default: /5
         correction_gain:
           name: OT Correction Gain (k)
-          description: >
-            Proportion of OT error to apply. 1.0 = full correction (original behaviour).
-            Typical: 0.25–0.6. Start around 0.4 (responsive rooms) or 0.5 (high MRT-lag rooms).
+          description: 'Proportion of OT error to apply. 1.0 = full correction (original
+            behaviour). Typical: 0.25–0.6. Start around 0.4 (responsive rooms) or
+            0.5 (high MRT-lag rooms).
+
+            '
           selector:
             number:
-              min: 0
-              max: 1
+              min: 0.0
+              max: 1.0
               step: 0.05
+              mode: slider
           default: 0.4
-
         max_step_per_run:
           name: Max Setpoint Step per Run (°C)
-          description: >
-            Limits how much the thermostat setpoint can change each time the automation runs.
-            Helps Evohome avoid large swings. Use 0.5°C to match Evohome steps.
-            Set to 0 to disable rate limiting.
+          description: 'Limits how much the thermostat setpoint can change each time
+            the automation runs. Helps Evohome avoid large swings. Use 0.5°C to match
+            Evohome steps. Set to 0 to disable rate limiting.
+
+            '
           selector:
             number:
-              min: 0
-              max: 2
+              min: 0.0
+              max: 2.0
               step: 0.5
+              mode: slider
           default: 0.5
-
     occupancy_inputs:
       name: '# Occupancy Inputs'
       collapsed: false
@@ -145,133 +214,135 @@ blueprint:
           name: Room Occupancy Sensor
           selector:
             entity:
-              domain: binary_sensor
-
+              domain:
+              - binary_sensor
+              multiple: false
+              reorder: false
         unoccupied_duration:
           name: Unoccupied Duration (min)
           selector:
             number:
-              min: 0
-              max: 59
-              step: 1
+              min: 0.0
+              max: 59.0
+              step: 1.0
+              mode: slider
           default: 10
-
         reoccupied_duration:
-          name: Reoccupied Duration (min)  # retained for compatibility
+          name: Reoccupied Duration (min)
           selector:
             number:
-              min: 0
-              max: 5
-              step: 1
+              min: 0.0
+              max: 5.0
+              step: 1.0
+              mode: slider
           default: 2
-
         weekday_morning_offset:
           name: Weekday Morning Offset (06:30–12:00, Unoccupied)
           selector:
             number:
-              min: -5
-              max: 0
+              min: -5.0
+              max: 0.0
               step: 0.5
+              mode: slider
           default: -0.5
-
         weekday_afternoon_offset:
           name: Weekday Afternoon Offset (12:00–16:30, Unoccupied)
           selector:
             number:
-              min: -5
-              max: 0
+              min: -5.0
+              max: 0.0
               step: 0.5
+              mode: slider
           default: -0.5
-
         weekday_evening_offset:
           name: Weekday Evening Offset (16:30–22:00, Unoccupied)
           selector:
             number:
-              min: -5
-              max: 0
+              min: -5.0
+              max: 0.0
               step: 0.5
+              mode: slider
           default: -0.5
-
         weekend_morning_offset:
           name: Weekend Morning Offset (06:30–12:00, Unoccupied)
           selector:
             number:
-              min: -5
-              max: 0
+              min: -5.0
+              max: 0.0
               step: 0.5
+              mode: slider
           default: -0.5
-
         weekend_afternoon_offset:
           name: Weekend Afternoon Offset (12:00–16:30, Unoccupied)
           selector:
             number:
-              min: -5
-              max: 0
+              min: -5.0
+              max: 0.0
               step: 0.5
+              mode: slider
           default: -0.5
-
         weekend_evening_offset:
           name: Weekend Evening Offset (16:30–22:00, Unoccupied)
           selector:
             number:
-              min: -5
-              max: 0
+              min: -5.0
+              max: 0.0
               step: 0.5
+              mode: slider
           default: -0.5
-
     misc_inputs:
       name: '# Misc Inputs'
       collapsed: false
       input:
         at_home_mode:
           name: At Home Mode
-          description: >
-            When enabled, uses weekend schedule regardless of actual day.
+          description: 'When enabled, uses weekend schedule regardless of actual day.
             Use this when off work to follow weekend setpoints.
+
+            '
           selector:
             entity:
-              domain: input_boolean
-
+              domain:
+              - input_boolean
+              multiple: false
+              reorder: false
         automation_delay:
           name: Automation Delay (s)
           selector:
             number:
-              min: 0
-              max: 20
-              step: 1
+              min: 0.0
+              max: 20.0
+              step: 1.0
+              mode: slider
           default: 0
-
         override_duration_minutes:
           name: Temporary Override Duration (minutes)
+          description: How long the temporary override lasts before evohome reverts
+            to its schedule. Must be longer than the run interval to prevent
+            sawtooth resets. 60 minutes recommended.
           selector:
             number:
-              min: 1
-              max: 240
-              step: 1
-          default: 10
-
+              min: 10.0
+              max: 240.0
+              step: 5.0
+              mode: slider
+          default: 60
+  source_url: https://github.com/xpenno255/ha_blueprints/blob/main/room_thermostat_ot_control.yaml
 mode: restart
-
 trigger:
-  - platform: time_pattern
-    minutes: "/1"
-
+- platform: time_pattern
+  minutes: !input run_interval_pattern
 variables:
   thermostat: !input thermostat
   backup_thermostat: !input backup_thermostat
   scheduled_setpoint_var: !input scheduled_setpoint
-
   operative_temperature_var: !input operative_temperature
   mrt_temperature_var: !input mrt_temperature
-
   min_thermostat_temp: !input min_thermostat_temp
   max_thermostat_temp: !input max_thermostat_temp
   smoothing_enabled: !input smoothing_enabled
-  run_interval_minutes: !input run_interval_minutes
-
   correction_gain: !input correction_gain
   max_step_per_run: !input max_step_per_run
-
   occupancy_sensor: !input room_occupancy_sensor
   unoccupied_duration: !input unoccupied_duration
   weekday_morning_offset: !input weekday_morning_offset
@@ -280,225 +351,143 @@ variables:
   weekend_morning_offset: !input weekend_morning_offset
   weekend_afternoon_offset: !input weekend_afternoon_offset
   weekend_evening_offset: !input weekend_evening_offset
-
   automation_delay: !input automation_delay
   override_duration_minutes: !input override_duration_minutes
   at_home_mode_var: !input at_home_mode
+  thermostat_name: '{{ state_attr(thermostat, ''friendly_name'') or thermostat }}'
+  _primary_ts: "{% set e = states[thermostat] if thermostat in states else none %}
+    {% if e is none or states(thermostat) in ['unavailable', 'unknown'] %}\n  0\n{%
+    elif e.last_reported is defined and e.last_reported is not none %}\n  {{ as_timestamp(e.last_reported)
+    }}\n{% elif e.last_updated is not none %}\n  {{ as_timestamp(e.last_updated) }}\n{%
+    else %}\n  0\n{% endif %}\n"
+  _backup_ts: "{% set e = states[backup_thermostat] if backup_thermostat in states
+    else none %} {% if e is none or states(backup_thermostat) in ['unavailable', 'unknown']
+    %}\n  0\n{% elif e.last_reported is defined and e.last_reported is not none %}\n
+    \ {{ as_timestamp(e.last_reported) }}\n{% elif e.last_updated is not none %}\n
+    \ {{ as_timestamp(e.last_updated) }}\n{% else %}\n  0\n{% endif %}\n"
+  using_backup_bool: "{{ backup_thermostat != thermostat\n   and (_backup_ts | float(0))
+    > (_primary_ts | float(0)) }}\n"
+  active_thermostat: '{{ using_backup_bool and backup_thermostat or thermostat }}'
+  thermostat_currentsetpoint: '{{ state_attr(active_thermostat, ''temperature'') |
+    float(0) }}'
+  scheduled_setpoint: '{{ states(scheduled_setpoint_var) | float(0) }}'
+  effective_setpoint: "{% set sched = state_attr(thermostat, 'schedule') %}\n\
+    {% set ns = namespace(val=scheduled_setpoint | float) %}\n\
+    {% if sched is not none %}\n\
+    \  {% set dow = now().weekday() %}\n\
+    \  {% set zone_sp = state_attr(thermostat, 'temperature') | float(0) %}\n\
+    \  {% for day in sched if day.day_of_week == dow %}\n\
+    \    {% if day.switchpoints | length > 0 %}\n\
+    \      {% set sp = day.switchpoints[0] %}\n\
+    \      {% if now().strftime('%H:%M') < sp.time_of_day\n\
+    \         and state_attr(thermostat, 'hvac_action') == 'heating'\n\
+    \         and zone_sp > (scheduled_setpoint | float) %}\n\
+    \        {% set ns.val = sp.heat_setpoint | float %}\n\
+    \      {% endif %}\n\
+    \    {% endif %}\n\
+    \  {% endfor %}\n\
+    {% endif %}\n\
+    {{ ns.val }}\n"
+  is_pre_heat: '{{ (effective_setpoint | float) != (scheduled_setpoint | float)
+    }}'
+  operative_temp: '{{ states(operative_temperature_var) | float(0) }}'
+  mrt_temp: '{{ states(mrt_temperature_var) | float(0) }}'
+  at_home_mode_enabled: '{{ is_state(at_home_mode_var, ''on'') }}'
+  is_weekend: '{{ now().weekday() in [5, 6] or at_home_mode_enabled }}'
+  time_period: '{% set m = now().hour*60 + now().minute %} {% if 390 <= m < 720 %}morning
+    {% elif 720 <= m < 990 %}afternoon {% elif 990 <= m < 1320 %}evening {% else %}none{%
+    endif %}
 
-  thermostat_name: "{{ state_attr(thermostat, 'friendly_name') or thermostat }}"
-
-  # Pick whichever thermostat reported most recently.
-  # Uses last_reported (HA 2024.4+), falling back to last_updated.
-  # If both entities are the same, or the backup is unavailable, always use primary.
-  _primary_ts: >
-    {% set e = states[thermostat] if thermostat in states else none %}
-    {% if e is none or states(thermostat) in ['unavailable', 'unknown'] %}
-      0
-    {% elif e.last_reported is defined and e.last_reported is not none %}
-      {{ as_timestamp(e.last_reported) }}
-    {% elif e.last_updated is not none %}
-      {{ as_timestamp(e.last_updated) }}
-    {% else %}
-      0
-    {% endif %}
-  _backup_ts: >
-    {% set e = states[backup_thermostat] if backup_thermostat in states else none %}
-    {% if e is none or states(backup_thermostat) in ['unavailable', 'unknown'] %}
-      0
-    {% elif e.last_reported is defined and e.last_reported is not none %}
-      {{ as_timestamp(e.last_reported) }}
-    {% elif e.last_updated is not none %}
-      {{ as_timestamp(e.last_updated) }}
-    {% else %}
-      0
-    {% endif %}
-  using_backup_bool: >
-    {{ backup_thermostat != thermostat
-       and (_backup_ts | float(0)) > (_primary_ts | float(0)) }}
-  active_thermostat: "{{ using_backup_bool and backup_thermostat or thermostat }}"
-
-  thermostat_currentsetpoint: "{{ state_attr(active_thermostat, 'temperature') | float(0) }}"
-
-  scheduled_setpoint: "{{ states(scheduled_setpoint_var) | float(0) }}"
-  operative_temp: "{{ states(operative_temperature_var) | float(0) }}"
-  mrt_temp: "{{ states(mrt_temperature_var) | float(0) }}"
-
-  at_home_mode_enabled: "{{ is_state(at_home_mode_var, 'on') }}"
-  is_weekend: "{{ now().weekday() in [5, 6] or at_home_mode_enabled }}"
-
-  time_period: >
-    {% set m = now().hour*60 + now().minute %}
-    {% if 390 <= m < 720 %}morning
-    {% elif 720 <= m < 990 %}afternoon
-    {% elif 990 <= m < 1320 %}evening
-    {% else %}none{% endif %}
-
-  unoccupied_offset: >
-    {% if time_period == 'morning' %}
-      {{ (is_weekend and weekend_morning_offset or weekday_morning_offset) }}
-    {% elif time_period == 'afternoon' %}
-      {{ (is_weekend and weekend_afternoon_offset or weekday_afternoon_offset) }}
-    {% elif time_period == 'evening' %}
-      {{ (is_weekend and weekend_evening_offset or weekday_evening_offset) }}
-    {% else %}0{% endif %}
-
-  is_unoccupied: >
-    {% set s = occupancy_sensor %}
-    {% if s and is_state(s, 'off') %}
-      {{ ((as_timestamp(now()) - as_timestamp(states[s].last_changed)) / 60) >= unoccupied_duration }}
-    {% else %}
-      false
-    {% endif %}
-  is_unoccupied_bool: "{{ is_unoccupied | bool }}"
-
-  _dur_h: "{{ override_duration_minutes // 60 }}"
-  _dur_m: "{{ override_duration_minutes % 60 }}"
-
+    '
+  unoccupied_offset: "{% if time_period == 'morning' %}\n  {{ (is_weekend and weekend_morning_offset
+    or weekday_morning_offset) }}\n{% elif time_period == 'afternoon' %}\n  {{ (is_weekend
+    and weekend_afternoon_offset or weekday_afternoon_offset) }}\n{% elif time_period
+    == 'evening' %}\n  {{ (is_weekend and weekend_evening_offset or weekday_evening_offset)
+    }}\n{% else %}0{% endif %}\n"
+  is_unoccupied: "{% set s = occupancy_sensor %} {% if s and is_state(s, 'off') %}\n
+    \ {{ ((as_timestamp(now()) - as_timestamp(states[s].last_changed)) / 60) >= unoccupied_duration
+    }}\n{% else %}\n  false\n{% endif %}\n"
+  is_unoccupied_bool: '{{ is_unoccupied | bool }}'
+  _dur_h: '{{ override_duration_minutes // 60 }}'
+  _dur_m: '{{ override_duration_minutes % 60 }}'
 condition:
-  - condition: state
-    entity_id: input_boolean.holiday_mode
-    state: "off"
-
-  - condition: template
-    value_template: >
-      {% set interval = run_interval_minutes | int %}
-      {{ interval <= 1 or (now().minute % interval) == 0 }}
-
+- condition: state
+  entity_id: input_boolean.holiday_mode
+  state: 'off'
 action:
-  - condition: time
-    before: "22:30:00"
-    after: "06:30:00"
+- condition: time
+  before: '22:30:00'
+  after: 06:30:00
+- delay:
+    seconds: '{{ automation_delay }}'
+- variables:
+    desired_ot: "{% if is_unoccupied_bool %}\n  {{ effective_setpoint | float
+      + (unoccupied_offset / 2) }}\n{% else %}\n  {{ effective_setpoint | float }}\n{%
+      endif %}\n"
+    raw_thermostat: '{% set k_max = correction_gain | float(0.4) %}
+      {% set gap = (desired_ot - mrt_temp) | abs %}
+      {% set scale = [gap / 2.0, 1.0] | min %}
+      {% set k = k_max * scale %}
+      {{ desired_ot + (k * (desired_ot - mrt_temp)) }}
 
-  - delay:
-      seconds: "{{ automation_delay }}"
+      '
+    clamped_thermostat: "{% set t = raw_thermostat | float %} {% if t < min_thermostat_temp
+      %}\n  {{ min_thermostat_temp }}\n{% elif t > max_thermostat_temp %}\n  {{ max_thermostat_temp
+      }}\n{% else %}\n  {{ t }}\n{% endif %}\n"
+    rounded_thermostat: '{{ clamped_thermostat | round(1) }}
 
-  - variables:
-      # desired_ot is the "feels like" target. When unoccupied, we apply HALF the unoccupied_offset here
-      # so that it is not doubled by the OT correction maths (Evohome setpoint impact equals unoccupied_offset).
-      desired_ot: >
-        {% if is_unoccupied_bool %}
-          {{ scheduled_setpoint + (unoccupied_offset / 2) }}
-        {% else %}
-          {{ scheduled_setpoint }}
-        {% endif %}
+      '
+    rate_limited_thermostat: "{% set t_new = rounded_thermostat | float %} {% set
+      t_curr = thermostat_currentsetpoint | float(0) %} {% set step = max_step_per_run
+      | float(0.5) %}\n{% if step <= 0 or t_curr <= 0 %}\n  {{ t_new }}\n{% else %}\n
+      \ {% set lo = t_curr - step %}\n  {% set hi = t_curr + step %}\n  {% if t_new
+      < lo %}\n    {{ lo }}\n  {% elif t_new > hi %}\n    {{ hi }}\n  {% else %}\n
+      \   {{ t_new }}\n  {% endif %}\n{% endif %}\n"
+    smoothed_thermostat: "{% set t_new = rate_limited_thermostat | float %} {% set
+      t_curr = thermostat_currentsetpoint | float %}\n{# Robustly fetch last_changed
+      with full safety guards #} {% if thermostat in states and states[thermostat].last_changed
+      is not none %}\n  {% set last = states[thermostat].last_changed %}\n{% else
+      %}\n  {% set last = now() %}\n{% endif %}\n{# Now safe: last always resolves
+      to a valid datetime object #} {% set age = (as_timestamp(now()) - as_timestamp(last))
+      | float(9999) %}\n{# Apply smoothing ONLY when:\n   - smoothing is enabled\n
+      \  - current setpoint is > 5°C\n   - entity state has been stable for > 180
+      seconds\n#} {% if smoothing_enabled\n      and t_curr > 5\n      and age > 180
+      %}\n  {{ (t_new * 0.6 + t_curr * 0.4) }}\n{% else %}\n  {{ t_new }}\n{% endif
+      %}\n"
+    final_thermostat: "{% set t = smoothed_thermostat | float %} {% if t < min_thermostat_temp
+      %}\n  {% set t = min_thermostat_temp %}\n{% elif t > max_thermostat_temp %}\n
+      \ {% set t = max_thermostat_temp %}\n{% endif %} {{ t | round(1)
+      }}\n"
+- service: ramses_cc.set_zone_mode
+  target:
+    entity_id: !input thermostat
+  data:
+    mode: temporary_override
+    setpoint: '{{ final_thermostat }}'
+    duration:
+      hours: '{{ _dur_h }}'
+      minutes: '{{ _dur_m }}'
+      seconds: 0
+- delay:
+    seconds: 5
+- variables:
+    confirmed_setpoint: '{{ state_attr(thermostat, ''temperature'') | float(0) }}'
+    setpoint_confirmed: '{{ (confirmed_setpoint | float - final_thermostat | float)
+      | abs < 0.15 }}'
+- service: system_log.write
+  data:
+    level: warning
+    message: '[Thermo {{ thermostat_name }}] OT CONTROL OVERRIDE → {{ final_thermostat
+      }}°C {{ setpoint_confirmed | default(true) and "✓" or "✗" }} (sched {{
+      scheduled_setpoint }}°C; eff_sched {{ effective_setpoint }}°C; pre_heat {{
+      is_pre_heat }}; desired_OT {{ desired_ot }}°C; OT {{
+      operative_temp }}°C; MRT {{ mrt_temp }}°C; k_max {{ correction_gain
+      }}; k_eff {{ (correction_gain | float * [((desired_ot - mrt_temp) | abs / 2.0), 1.0] | min) | round(2)
+      }}; max_step_per_run
+      {{ max_step_per_run }}°C; at_home_mode {{ at_home_mode_enabled }}; unocc {{
+      is_unoccupied_bool }}; unocc_offset {{ unoccupied_offset }}°C; smoothing {{
+      smoothing_enabled }}; backup {{ using_backup_bool }}; raw {{ raw_thermostat
+      }}°C; rounded {{ rounded_thermostat }}°C; rate_limited {{ rate_limited_thermostat
+      }}°C; smoothed {{ smoothed_thermostat }}°C; final {{ final_thermostat }}°C)
 
-      # Gain-based OT correction:
-      # raw_thermostat = desired_ot + k*(desired_ot - operative_temp)
-      raw_thermostat: >
-        {% set k = correction_gain | float(0.4) %}
-        {{ desired_ot + (k * (desired_ot - operative_temp)) }}
-
-      clamped_thermostat: >
-        {% set t = raw_thermostat | float %}
-        {% if t < min_thermostat_temp %}
-          {{ min_thermostat_temp }}
-        {% elif t > max_thermostat_temp %}
-          {{ max_thermostat_temp }}
-        {% else %}
-          {{ t }}
-        {% endif %}
-
-      rounded_thermostat: >
-        {{ ((clamped_thermostat * 2) | round(0) / 2) }}
-
-      # Rate limit the change per run to avoid big swings (Evohome-friendly ramp).
-      rate_limited_thermostat: >
-        {% set t_new = rounded_thermostat | float %}
-        {% set t_curr = thermostat_currentsetpoint | float(0) %}
-        {% set step = max_step_per_run | float(0.5) %}
-
-        {% if step <= 0 or t_curr <= 0 %}
-          {{ t_new }}
-        {% else %}
-          {% set lo = t_curr - step %}
-          {% set hi = t_curr + step %}
-          {% if t_new < lo %}
-            {{ lo }}
-          {% elif t_new > hi %}
-            {{ hi }}
-          {% else %}
-            {{ t_new }}
-          {% endif %}
-        {% endif %}
-
-      smoothed_thermostat: >
-        {% set t_new = rate_limited_thermostat | float %}
-        {% set t_curr = thermostat_currentsetpoint | float %}
-
-        {# Robustly fetch last_changed with full safety guards #}
-        {% if thermostat in states and states[thermostat].last_changed is not none %}
-          {% set last = states[thermostat].last_changed %}
-        {% else %}
-          {% set last = now() %}
-        {% endif %}
-
-        {# Now safe: last always resolves to a valid datetime object #}
-        {% set age = (as_timestamp(now()) - as_timestamp(last)) | float(9999) %}
-
-        {# Apply smoothing ONLY when:
-           - smoothing is enabled
-           - current setpoint is > 5°C
-           - entity state has been stable for > 180 seconds
-        #}
-        {% if smoothing_enabled
-              and t_curr > 5
-              and age > 180 %}
-          {{ (t_new * 0.6 + t_curr * 0.4) }}
-        {% else %}
-          {{ t_new }}
-        {% endif %}
-
-      final_thermostat: >
-        {% set t = smoothed_thermostat | float %}
-        {% if t < min_thermostat_temp %}
-          {% set t = min_thermostat_temp %}
-        {% elif t > max_thermostat_temp %}
-          {% set t = max_thermostat_temp %}
-        {% endif %}
-        {{ ((t * 2) | round(0) / 2) }}
-
-  - choose:
-      # Backup path: primary thermostat is stale, use cloud integration
-      - conditions:
-          - condition: template
-            value_template: "{{ using_backup_bool }}"
-        sequence:
-          - service: climate.set_temperature
-            target:
-              entity_id: !input backup_thermostat
-            data:
-              temperature: "{{ final_thermostat }}"
-    # Default path: primary thermostat is healthy, use ramses_cc
-    default:
-      - service: ramses_cc.set_zone_mode
-        target:
-          entity_id: !input thermostat
-        data:
-          mode: temporary_override
-          setpoint: "{{ final_thermostat }}"
-          duration:
-            hours: "{{ _dur_h }}"
-            minutes: "{{ _dur_m }}"
-            seconds: 0
-
-  - service: system_log.write
-    data:
-      level: warning
-      message: >
-        [Thermo {{ thermostat_name }}] OT CONTROL OVERRIDE → {{ final_thermostat }}°C
-        (sched {{ scheduled_setpoint }}°C;
-        desired_OT {{ desired_ot }}°C;
-        OT {{ operative_temp }}°C;
-        MRT {{ mrt_temp }}°C;
-        k {{ correction_gain }};
-        max_step_per_run {{ max_step_per_run }}°C;
-        at_home_mode {{ at_home_mode_enabled }};
-        unocc {{ is_unoccupied_bool }};
-        unocc_offset {{ unoccupied_offset }}°C;
-        smoothing {{ smoothing_enabled }};
-        backup {{ using_backup_bool }};
-        raw {{ raw_thermostat }}°C;
-        rounded {{ rounded_thermostat }}°C;
-        rate_limited {{ rate_limited_thermostat }}°C;
-        smoothed {{ smoothed_thermostat }}°C;
-        final {{ final_thermostat }}°C)
+      '
