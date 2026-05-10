@@ -5,7 +5,7 @@ blueprint:
     support, shuffle, expanded triggers (with disambiguation to prevent overlapping
     matches), optional LLM fallback for unrecognised artists, increased search limit
     and smarter result selection. (View Assist Play Music with Music Assistant
-    v 1.4.0-enhanced)
+    v 1.4.3-enhanced)
   domain: automation
   input:
     ma_instance:
@@ -210,6 +210,7 @@ actions:
           playsong_found: Playing {song} by {artist}
           playsong_not_found: Sorry {song} by {artist} was not found
           playsong_queue: Queuing {song} by {artist}
+          llm_offline: Sorry, no match could be found. My AI assistant appears to be offline.
       de:
         responses:
           playartist_found: Spiele Musik von {artist}
@@ -224,6 +225,7 @@ actions:
           playsong_found: Spiele {song} von {artist}
           playsong_not_found: Entschuldigung, ich konnte den Song {song} von {artist} nicht finden
           playsong_queue: Füge {song} von {artist} zur Warteschlange hinzu
+          llm_offline: Entschuldigung, kein Treffer gefunden. Mein KI-Assistent scheint offline zu sein.
       nl:
         responses:
           playartist_found: Muziek van {artist} afspelen
@@ -238,6 +240,7 @@ actions:
           playsong_found: '{song} van {artist} afspelen'
           playsong_not_found: Sorry, {song} van {artist} is niet gevonden
           playsong_queue: '{song} van {artist} toevoegen aan de wachtrij'
+          llm_offline: Sorry, geen overeenkomst gevonden. Mijn AI-assistent lijkt offline te zijn.
       pl:
         responses:
           playartist_found: Odtwarzam muzykę {artist}
@@ -252,6 +255,7 @@ actions:
           playsong_found: Odtwarzam {song} od {artist}
           playsong_not_found: Przepraszam, nie znaleziono {song} od {artist}
           playsong_queue: Dodaję do kolejki {song} od {artist}
+          llm_offline: Przepraszam, nie znaleziono dopasowania. Mój asystent AI wydaje się być offline.
       pt:
         responses:
           playartist_found: Tocando música de {artist}
@@ -266,6 +270,7 @@ actions:
           playsong_found: Tocando {song} por {artist}
           playsong_not_found: Desculpe, a música {song} por {artist} não foi encontrada
           playsong_queue: Incluindo a música {song} por {artist} na lista
+          llm_offline: Desculpe, nenhuma correspondência encontrada. O meu assistente de IA parece estar offline.
       ro:
         responses:
           playartist_found: Redau muzică de {artist}
@@ -280,6 +285,7 @@ actions:
           playsong_found: Redau {song} de {artist}
           playsong_not_found: Îmi pare rău, {song} de {artist} nu a fost găsit
           playsong_queue: Adaug în coadă {song} de {artist}
+          llm_offline: Îmi pare rău, nu s-a găsit nicio potrivire. Asistentul meu AI pare să fie offline.
 
 - choose:
 
@@ -321,16 +327,36 @@ actions:
           agent_id: '{{ llm_fallback_agent }}'
           text: '{{ llm_prompt }}'
         response_variable: llm_resolved
-      - variables:
-          resolved_artist_name: '{{ llm_resolved.response.speech.plain.speech | trim | replace(''"'', '''') }}'
-      - action: music_assistant.search
-        data:
-          limit: '{{ effective_search_limit | int }}'
-          config_entry_id: '{{ ma_instance }}'
-          media_type:
-          - artist
-          name: '{{ resolved_artist_name }}'
-        response_variable: found_artist
+      - if:
+        - condition: template
+          value_template: '{{ llm_resolved.response.response_type != "action_done" }}'
+        then:
+        - if:
+          - condition: template
+            value_template: '{{ target_use_announce is not false }}'
+          then:
+          - variables:
+              conversation_response: '{{ translations[language][''responses''][''llm_offline''] }}'
+          - set_conversation_response: '{{ conversation_response }}'
+          - action: view_assist.set_state
+            target:
+              entity_id: '{{ target_satellite_device }}'
+            data:
+              last_said: '{{ conversation_response }}'
+          else:
+          - set_conversation_response: ''
+        - stop: LLM assistant offline
+        else:
+        - variables:
+            resolved_artist_name: '{{ llm_resolved.response.speech.plain.speech | trim | replace(''"'', '''') }}'
+        - action: music_assistant.search
+          data:
+            limit: '{{ effective_search_limit | int }}'
+            config_entry_id: '{{ ma_instance }}'
+            media_type:
+            - artist
+            name: '{{ resolved_artist_name }}'
+          response_variable: found_artist
 
     # Smart selection: if extended search + smart selection enabled, score and
     # pick the best candidate. Otherwise pick index 0 (original behaviour).
@@ -448,6 +474,10 @@ actions:
       - shufflealbum
     sequence:
 
+    # Strip trailing "by" that bleeds in when STT drops the artist
+    - variables:
+        clean_album: '{{ trigger.slots.album | regex_replace("\\s+by\\s*$", "") | trim }}'
+
     # First search attempt — pass artist as hint if provided
     - action: music_assistant.search
       data:
@@ -455,7 +485,7 @@ actions:
         config_entry_id: '{{ ma_instance }}'
         media_type:
         - album
-        name: '{{ trigger.slots.album }}'
+        name: '{{ clean_album }}'
         artist: '{{ trigger.slots.artist | default('''') }}'
       response_variable: found_album
 
@@ -467,34 +497,60 @@ actions:
       - variables:
           llm_prompt: >-
             A user is trying to play an album using a voice command, but the
-            speech-to-text system may have misheard the artist name. The raw
-            transcription is album "{{ trigger.slots.album }}" by artist
-            "{{ trigger.slots.artist | default('''') }}". Reply with ONLY the
-            most likely canonical artist name, nothing else. No punctuation
-            around it, no explanation, no quotes. If you cannot guess, reply
-            with the original artist text unchanged. If no artist was given,
-            reply with an empty string.
+            speech-to-text system may have misheard the artist or album name.
+            The raw transcription is album "{{ clean_album }}" by artist
+            "{{ trigger.slots.artist | default('') }}". Reply in exactly this
+            format on one line: ARTIST|ALBUM — replace ARTIST with the
+            canonical artist name and ALBUM with the canonical album title.
+            No other text, no explanation, no quotes around values. If you
+            cannot improve a value, repeat it unchanged. If no artist was
+            given, use an empty string before the pipe.
       - action: conversation.process
         data:
           agent_id: '{{ llm_fallback_agent }}'
           text: '{{ llm_prompt }}'
         response_variable: llm_resolved
-      - variables:
-          resolved_artist_name: '{{ llm_resolved.response.speech.plain.speech | trim | replace(''"'', '''') }}'
-      - action: music_assistant.search
-        data:
-          limit: '{{ effective_search_limit | int }}'
-          config_entry_id: '{{ ma_instance }}'
-          media_type:
-          - album
-          name: '{{ trigger.slots.album }}'
-          artist: '{{ resolved_artist_name }}'
-        response_variable: found_album
+      - if:
+        - condition: template
+          value_template: '{{ llm_resolved.response.response_type != "action_done" }}'
+        then:
+        - if:
+          - condition: template
+            value_template: '{{ target_use_announce is not false }}'
+          then:
+          - variables:
+              conversation_response: '{{ translations[language][''responses''][''llm_offline''] }}'
+          - set_conversation_response: '{{ conversation_response }}'
+          - action: view_assist.set_state
+            target:
+              entity_id: '{{ target_satellite_device }}'
+            data:
+              last_said: '{{ conversation_response }}'
+          else:
+          - set_conversation_response: ''
+        - stop: LLM assistant offline
+        else:
+        - variables:
+            resolved_artist_name: >-
+              {% set resp = llm_resolved.response.speech.plain.speech | trim | replace('"', '') %}
+              {{ resp.split("|")[0] | trim if "|" in resp else (trigger.slots.artist | default('')) }}
+            resolved_album_name: >-
+              {% set resp = llm_resolved.response.speech.plain.speech | trim | replace('"', '') %}
+              {{ resp.split("|")[1] | trim if "|" in resp else clean_album }}
+        - action: music_assistant.search
+          data:
+            limit: '{{ effective_search_limit | int }}'
+            config_entry_id: '{{ ma_instance }}'
+            media_type:
+            - album
+            name: '{{ resolved_album_name }}'
+            artist: '{{ resolved_artist_name }}'
+          response_variable: found_album
 
     - variables:
         chosen_album_index: >-
           {% if use_extended_search and use_smart_selection and (found_album['albums'] | count) > 1 %}
-            {% set album_q = (trigger.slots.album | lower) %}
+            {% set album_q = (clean_album | lower) %}
             {% set artist_q = (trigger.slots.artist | default('') | lower) %}
             {% set ns = namespace(best_idx=0, best_score=-1) %}
             {% for a in found_album['albums'] %}
@@ -592,7 +648,7 @@ actions:
           value_template: '{{ target_use_announce is not false }}'
         then:
         - variables:
-            conversation_response: '{{ translations[language][''responses''][''playalbum_not_found''].replace("{search_album}", trigger.slots.album) }}'
+            conversation_response: '{{ translations[language][''responses''][''playalbum_not_found''].replace("{search_album}", clean_album) }}'
         - set_conversation_response: '{{ conversation_response }}'
         - action: view_assist.set_state
           target:
@@ -758,28 +814,54 @@ actions:
       - variables:
           llm_prompt: >-
             A user is trying to play a song using a voice command, but the
-            speech-to-text system may have misheard the artist name. The raw
-            transcription is song "{{ trigger.slots.song }}" by artist
-            "{{ trigger.slots.artist }}". Reply with ONLY the most likely
-            canonical artist name, nothing else. No punctuation around it, no
-            explanation, no quotes. If you cannot guess, reply with the
-            original artist text unchanged.
+            speech-to-text system may have misheard the artist name or song
+            title. The raw transcription is song "{{ trigger.slots.song }}"
+            by artist "{{ trigger.slots.artist }}". Reply in exactly this
+            format on one line: ARTIST|SONG — replace ARTIST with the
+            canonical artist name and SONG with the canonical song title.
+            No other text, no explanation, no quotes around values. If you
+            cannot improve a value, repeat it unchanged.
       - action: conversation.process
         data:
           agent_id: '{{ llm_fallback_agent }}'
           text: '{{ llm_prompt }}'
         response_variable: llm_resolved
-      - variables:
-          resolved_artist_name: '{{ llm_resolved.response.speech.plain.speech | trim | replace(''"'', '''') }}'
-      - action: music_assistant.search
-        data:
-          limit: '{{ effective_search_limit | int }}'
-          config_entry_id: '{{ ma_instance }}'
-          media_type:
-          - track
-          name: '{{ trigger.slots.song }}'
-          artist: '{{ resolved_artist_name }}'
-        response_variable: found_track
+      - if:
+        - condition: template
+          value_template: '{{ llm_resolved.response.response_type != "action_done" }}'
+        then:
+        - if:
+          - condition: template
+            value_template: '{{ target_use_announce is not false }}'
+          then:
+          - variables:
+              conversation_response: '{{ translations[language][''responses''][''llm_offline''] }}'
+          - set_conversation_response: '{{ conversation_response }}'
+          - action: view_assist.set_state
+            target:
+              entity_id: '{{ target_satellite_device }}'
+            data:
+              last_said: '{{ conversation_response }}'
+          else:
+          - set_conversation_response: ''
+        - stop: LLM assistant offline
+        else:
+        - variables:
+            resolved_artist_name: >-
+              {% set resp = llm_resolved.response.speech.plain.speech | trim | replace('"', '') %}
+              {{ resp.split("|")[0] | trim if "|" in resp else trigger.slots.artist }}
+            resolved_song_name: >-
+              {% set resp = llm_resolved.response.speech.plain.speech | trim | replace('"', '') %}
+              {{ resp.split("|")[1] | trim if "|" in resp else trigger.slots.song }}
+        - action: music_assistant.search
+          data:
+            limit: '{{ effective_search_limit | int }}'
+            config_entry_id: '{{ ma_instance }}'
+            media_type:
+            - track
+            name: '{{ resolved_song_name }}'
+            artist: '{{ resolved_artist_name }}'
+          response_variable: found_track
 
     - variables:
         chosen_track_index: >-
