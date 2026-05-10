@@ -1,0 +1,907 @@
+blueprint:
+  name: View Assist - Play Music with Music Assistant (Enhanced)
+  description: Use various methods to play individual songs, albums, queue tracks,
+    play artists and playlists from your Music Assistant server. Adds album
+    support, shuffle, expanded triggers (with disambiguation to prevent overlapping
+    matches), optional LLM fallback for unrecognised artists, increased search limit
+    and smarter result selection. (View Assist Play Music with Music Assistant
+    v 1.4.0-enhanced)
+  domain: automation
+  input:
+    ma_instance:
+      name: Music Assistant Instance
+      description: Select the Music Assistant instance
+      selector:
+        config_entry:
+          integration: music_assistant
+    view_path:
+      name: Dashboard Info view
+      description: The View Assist dashboard view to use for displaying music information
+        (example /view-assist/music)
+      default: /view-assist/music
+    language:
+      name: Language
+      description: The desired spoken language
+      default: en
+      selector:
+        language:
+          languages:
+          - de
+          - en
+          - nl
+          - pl
+          - pt
+          - ro
+          no_sort: false
+          native_name: false
+
+    # ----- Trigger phrases -----
+    # NOTE: artist patterns require an explicit qualifier (music/songs/artist) so
+    # they cannot collide with the song pattern "play X by Y". Otherwise "play
+    # November Rain by Guns N' Roses" would match both song AND artist triggers
+    # and the automation would fire twice.
+    play_artist_command:
+      name: Play Artist Command
+      description: The command to trigger the play artist action. All variants
+        require an explicit qualifier (music/songs/artist) to avoid clashing with
+        the play song trigger.
+      default: >-
+        (play the artist {artist}
+        | play some {artist} (music | songs)
+        | play [some] (music | songs) by {artist}
+        | put on [some] {artist} (music | songs)
+        | put on the artist {artist}
+        | listen to [some] {artist} (music | songs)
+        | listen to the artist {artist}
+        | I want to listen to [some] {artist} (music | songs)
+        | I want to listen to the artist {artist}
+        | play me [some] {artist} (music | songs))
+    play_album_command:
+      name: Play Album Command
+      description: The command to trigger the play album action. The artist part
+        is optional but improves search accuracy.
+      default: (play | put on) [the] album {album} [by {artist}]
+    play_playlist_command:
+      name: Play Playlist Command
+      description: The command to trigger the play playlist action
+      default: (start | play) [the] {playlist} playlist
+    play_song_command:
+      name: Play Song Command
+      description: The command to trigger the play song action
+      default: "(play | put on) [the] song {song} by {artist} | (play | put on) {song} by {artist}"
+    queue_song_command:
+      name: Queue Song Command
+      description: The command to trigger the queue song action
+      default: "(queue | cue | Q) [the] song {song} by {artist} | (queue | cue | Q) {song} by {artist}"
+    shuffle_artist_command:
+      name: Shuffle Artist Command
+      description: The command to trigger shuffled playback of an artist. Requires
+        an explicit qualifier (music/songs/artist) to avoid trigger overlap.
+      default: >-
+        (shuffle the artist {artist}
+        | shuffle [some] {artist} (music | songs)
+        | shuffle [some] (music | songs) by {artist})
+    shuffle_album_command:
+      name: Shuffle Album Command
+      description: The command to trigger shuffled album playback
+      default: shuffle [the] album {album} [by {artist}]
+    shuffle_playlist_command:
+      name: Shuffle Playlist Command
+      description: The command to trigger shuffled playback of a playlist
+      default: shuffle [the] {playlist} playlist
+
+    # ----- Search behaviour -----
+    use_extended_search:
+      name: Use Extended Search Limit
+      description: Search for more than one match per query. When enabled, MA returns
+        up to the configured number of candidates and the smarter selection mode
+        (if enabled) chooses the best one. When disabled, MA returns only the top
+        match (original behaviour).
+      default: false
+      selector:
+        boolean: {}
+    extended_search_limit:
+      name: Extended Search Limit
+      description: How many candidates to fetch from Music Assistant when extended
+        search is enabled. Has no effect when extended search is disabled.
+      default: 5
+      selector:
+        number:
+          min: 2
+          max: 25
+          step: 1
+          mode: slider
+    use_smart_selection:
+      name: Use Smarter Selection
+      description: When extended search is enabled, score candidates and pick the
+        best match instead of always taking the first result. Scoring favours
+        substring matches against the spoken query and entries already present in
+        the local library. Has no effect when extended search is disabled.
+      default: false
+      selector:
+        boolean: {}
+
+    # ----- LLM fallback -----
+    use_llm_fallback:
+      name: Use LLM Fallback For Unknown Artists
+      description: If Music Assistant's search returns no results for an artist,
+        album or song, ask a conversation agent to suggest the canonical name
+        then retry the search. Useful for fixing speech-to-text misheard band
+        names like "altar bridge" or "guns and roses". You must select a
+        conversation agent below for this to work.
+      default: false
+      selector:
+        boolean: {}
+    llm_fallback_agent:
+      name: LLM Fallback Conversation Agent
+      description: The conversation agent to call when the first Music Assistant
+        search returns no results. Only used if "Use LLM Fallback" is enabled.
+        Pick a capable agent such as your local vLLM-backed assistant.
+      default: conversation.home_assistant
+      selector:
+        conversation_agent: {}
+
+alias: View Assist - Play Music with Music Assistant (Enhanced)
+description: Play music using music assistant with optional shuffle, album
+  support, smarter search, and LLM fallback for unknown artists.
+
+trigger:
+- trigger: conversation
+  command: !input play_artist_command
+  id: playartist
+- trigger: conversation
+  command: !input shuffle_artist_command
+  id: shuffleartist
+- trigger: conversation
+  command: !input play_album_command
+  id: playalbum
+- trigger: conversation
+  command: !input shuffle_album_command
+  id: shufflealbum
+- trigger: conversation
+  command: !input play_playlist_command
+  id: playlist
+- trigger: conversation
+  command: !input shuffle_playlist_command
+  id: shuffleplaylist
+- trigger: conversation
+  command: !input play_song_command
+  id: playsong
+- trigger: conversation
+  command: !input queue_song_command
+  id: cuesong
+
+conditions: []
+
+actions:
+- variables:
+    target_satellite_device: '{{ view_assist_entity(trigger.device_id) }}'
+    target_mediaplayer_device: '{{ state_attr(target_satellite_device, ''mediaplayer_device'') }}'
+    target_satellite_device_type: '{{ state_attr(target_satellite_device, ''type'') }}'
+    target_musicplayer_device: '{{ state_attr(target_satellite_device, ''musicplayer_device'') }}'
+    target_use_announce: '{{ state_attr(target_satellite_device, ''use_announce'') }}'
+    view_path: !input view_path
+    ma_instance: !input ma_instance
+    language: !input language
+
+    # New inputs
+    use_extended_search: !input use_extended_search
+    extended_search_limit: !input extended_search_limit
+    use_smart_selection: !input use_smart_selection
+    use_llm_fallback: !input use_llm_fallback
+    llm_fallback_agent: !input llm_fallback_agent
+
+    # Resolve effective search limit
+    effective_search_limit: '{{ extended_search_limit if use_extended_search else 1 }}'
+
+    # Translations (with shuffle and album entries added)
+    translations:
+      en:
+        responses:
+          playartist_found: Playing {artist} music
+          playartist_not_found: I was unable to find any music for {search_artist}
+          shuffleartist_found: Shuffling {artist}
+          playalbum_found: Playing the album {album} by {artist}
+          shufflealbum_found: Shuffling the album {album} by {artist}
+          playalbum_not_found: Sorry, the album {search_album} could not be found
+          playlist_found: Playing the {playlist} playlist
+          shuffleplaylist_found: Shuffling the {playlist} playlist
+          playlist_not_found: Sorry, no playlist named {search_playlist} could be found
+          playsong_found: Playing {song} by {artist}
+          playsong_not_found: Sorry {song} by {artist} was not found
+          playsong_queue: Queuing {song} by {artist}
+      de:
+        responses:
+          playartist_found: Spiele Musik von {artist}
+          playartist_not_found: Entschuldigung, ich konnte keine Musik von {search_artist} finden
+          shuffleartist_found: Mische Musik von {artist}
+          playalbum_found: Spiele das Album {album} von {artist}
+          shufflealbum_found: Mische das Album {album} von {artist}
+          playalbum_not_found: Entschuldigung, das Album {search_album} konnte nicht gefunden werden
+          playlist_found: Spiele die Playlist {playlist}
+          shuffleplaylist_found: Mische die Playlist {playlist}
+          playlist_not_found: Entschuldigung, ich konnte keine Playlist mit dem Namen {search_playlist} finden
+          playsong_found: Spiele {song} von {artist}
+          playsong_not_found: Entschuldigung, ich konnte den Song {song} von {artist} nicht finden
+          playsong_queue: Füge {song} von {artist} zur Warteschlange hinzu
+      nl:
+        responses:
+          playartist_found: Muziek van {artist} afspelen
+          playartist_not_found: Ik kon geen muziek vinden van {search_artist}
+          shuffleartist_found: Muziek van {artist} shuffelen
+          playalbum_found: Het album {album} van {artist} afspelen
+          shufflealbum_found: Het album {album} van {artist} shuffelen
+          playalbum_not_found: Sorry, het album {search_album} is niet gevonden
+          playlist_found: De afspeellijst {playlist} afspelen
+          shuffleplaylist_found: De afspeellijst {playlist} shuffelen
+          playlist_not_found: Sorry, er kon geen afspeellijst met de naam {search_playlist} worden gevonden
+          playsong_found: '{song} van {artist} afspelen'
+          playsong_not_found: Sorry, {song} van {artist} is niet gevonden
+          playsong_queue: '{song} van {artist} toevoegen aan de wachtrij'
+      pl:
+        responses:
+          playartist_found: Odtwarzam muzykę {artist}
+          playartist_not_found: Nie udało się znaleźć muzyki dla {search_artist}
+          shuffleartist_found: Losowo odtwarzam {artist}
+          playalbum_found: Odtwarzam album {album} wykonawcy {artist}
+          shufflealbum_found: Losowo odtwarzam album {album} wykonawcy {artist}
+          playalbum_not_found: Przepraszam, nie znaleziono albumu {search_album}
+          playlist_found: Odtwarzam playlistę {playlist}
+          shuffleplaylist_found: Losowo odtwarzam playlistę {playlist}
+          playlist_not_found: Przepraszam, nie znaleziono playlisty o nazwie {search_playlist}
+          playsong_found: Odtwarzam {song} od {artist}
+          playsong_not_found: Przepraszam, nie znaleziono {song} od {artist}
+          playsong_queue: Dodaję do kolejki {song} od {artist}
+      pt:
+        responses:
+          playartist_found: Tocando música de {artist}
+          playartist_not_found: Não foi possível encontrar nenhuma música de {search_artist}
+          shuffleartist_found: Embaralhando música de {artist}
+          playalbum_found: Tocando o álbum {album} de {artist}
+          shufflealbum_found: Embaralhando o álbum {album} de {artist}
+          playalbum_not_found: Desculpe, o álbum {search_album} não foi encontrado
+          playlist_found: Tocando a Playlist {playlist}
+          shuffleplaylist_found: Embaralhando a Playlist {playlist}
+          playlist_not_found: Desculpe, nenhuma Playlist com o nome {search_playlist} pode ser encontrada
+          playsong_found: Tocando {song} por {artist}
+          playsong_not_found: Desculpe, a música {song} por {artist} não foi encontrada
+          playsong_queue: Incluindo a música {song} por {artist} na lista
+      ro:
+        responses:
+          playartist_found: Redau muzică de {artist}
+          playartist_not_found: Nu am găsit muzică de {search_artist}
+          shuffleartist_found: Redau aleatoriu muzică de {artist}
+          playalbum_found: Redau albumul {album} de {artist}
+          shufflealbum_found: Redau aleatoriu albumul {album} de {artist}
+          playalbum_not_found: Îmi pare rău, albumul {search_album} nu a fost găsit
+          playlist_found: Redau lista de redare {playlist}
+          shuffleplaylist_found: Redau aleatoriu lista de redare {playlist}
+          playlist_not_found: Îmi pare rău, nu a fost găsită nicio listă de redare numită {search_playlist}
+          playsong_found: Redau {song} de {artist}
+          playsong_not_found: Îmi pare rău, {song} de {artist} nu a fost găsit
+          playsong_queue: Adaug în coadă {song} de {artist}
+
+- choose:
+
+  # ============================================================
+  # ARTIST (play / shuffle)
+  # ============================================================
+  - conditions:
+    - condition: trigger
+      id:
+      - playartist
+      - shuffleartist
+    sequence:
+
+    # First search attempt
+    - action: music_assistant.search
+      data:
+        limit: '{{ effective_search_limit | int }}'
+        config_entry_id: '{{ ma_instance }}'
+        media_type:
+        - artist
+        name: '{{ trigger.slots.artist }}'
+      response_variable: found_artist
+
+    # If nothing found and LLM fallback is enabled, ask the LLM and retry
+    - if:
+      - condition: template
+        value_template: '{{ found_artist[''artists''] | count == 0 and use_llm_fallback }}'
+      then:
+      - variables:
+          llm_prompt: >-
+            A user is trying to play music by an artist using a voice command,
+            but the speech-to-text system may have misheard the name. The raw
+            transcribed text is: "{{ trigger.slots.artist }}". Reply with ONLY
+            the most likely canonical artist name and nothing else. No
+            punctuation around it, no explanation, no quotes. If you genuinely
+            cannot guess, reply with the original text unchanged.
+      - action: conversation.process
+        data:
+          agent_id: '{{ llm_fallback_agent }}'
+          text: '{{ llm_prompt }}'
+        response_variable: llm_resolved
+      - variables:
+          resolved_artist_name: '{{ llm_resolved.response.speech.plain.speech | trim | replace(''"'', '''') }}'
+      - action: music_assistant.search
+        data:
+          limit: '{{ effective_search_limit | int }}'
+          config_entry_id: '{{ ma_instance }}'
+          media_type:
+          - artist
+          name: '{{ resolved_artist_name }}'
+        response_variable: found_artist
+
+    # Smart selection: if extended search + smart selection enabled, score and
+    # pick the best candidate. Otherwise pick index 0 (original behaviour).
+    - variables:
+        chosen_artist_index: >-
+          {% if use_extended_search and use_smart_selection and (found_artist['artists'] | count) > 1 %}
+            {% set query = (trigger.slots.artist | lower) %}
+            {% set ns = namespace(best_idx=0, best_score=-1) %}
+            {% for a in found_artist['artists'] %}
+              {% set name_l = a.name | lower %}
+              {% set score = 0 %}
+              {% if name_l == query %}
+                {% set score = score + 100 %}
+              {% endif %}
+              {% if query in name_l or name_l in query %}
+                {% set score = score + 30 %}
+              {% endif %}
+              {% if a.in_library is defined and a.in_library %}
+                {% set score = score + 20 %}
+              {% elif a.is_in_library is defined and a.is_in_library %}
+                {% set score = score + 20 %}
+              {% endif %}
+              {% set score = score - loop.index0 %}
+              {% if score > ns.best_score %}
+                {% set ns.best_score = score %}
+                {% set ns.best_idx = loop.index0 %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.best_idx }}
+          {% else %}
+            0
+          {% endif %}
+
+    - alias: Did we find an artist?
+      if:
+      - condition: template
+        value_template: '{{ found_artist[''artists''] | count > 0 }}'
+        alias: We found an artist!
+      then:
+      - action: view_assist.set_state
+        target:
+          entity_id: '{{ target_satellite_device }}'
+        data:
+          mode: music
+          title: ''
+          message_font_size: 5vw
+      - action: view_assist.navigate
+        data:
+          device: '{{ target_satellite_device }}'
+          path: '{{ view_path }}'
+
+      # Set shuffle on the player based on the trigger
+      - if:
+        - condition: trigger
+          id: shuffleartist
+        then:
+        - action: media_player.shuffle_set
+          target:
+            entity_id: '{{ target_musicplayer_device }}'
+          data:
+            shuffle: true
+        else:
+        - action: media_player.shuffle_set
+          target:
+            entity_id: '{{ target_musicplayer_device }}'
+          data:
+            shuffle: false
+
+      - action: music_assistant.play_media
+        target:
+          entity_id: '{{ target_musicplayer_device }}'
+        data:
+          media_type: artist
+          enqueue: replace
+          media_id: '{{ found_artist.artists[chosen_artist_index | int].name }}'
+
+      - if:
+        - condition: template
+          value_template: '{{ target_use_announce is not false }}'
+        then:
+        - variables:
+            response_key: '{{ ''shuffleartist_found'' if trigger.id == ''shuffleartist'' else ''playartist_found'' }}'
+            conversation_response: '{{ translations[language][''responses''][response_key].replace("{artist}", found_artist.artists[chosen_artist_index | int].name) }}'
+        - set_conversation_response: '{{ conversation_response }}'
+        - action: view_assist.set_state
+          target:
+            entity_id: '{{ target_satellite_device }}'
+          data:
+            last_said: '{{ conversation_response }}'
+        else:
+        - set_conversation_response: ''
+      else:
+      - if:
+        - condition: template
+          value_template: '{{ target_use_announce is not false }}'
+        then:
+        - variables:
+            conversation_response: '{{ translations[language][''responses''][''playartist_not_found''].replace("{search_artist}", trigger.slots.artist) }}'
+        - set_conversation_response: '{{ conversation_response }}'
+        - action: view_assist.set_state
+          target:
+            entity_id: '{{ target_satellite_device }}'
+          data:
+            last_said: '{{ conversation_response }}'
+        else:
+        - set_conversation_response: ''
+
+  # ============================================================
+  # ALBUM (play / shuffle)
+  # ============================================================
+  - conditions:
+    - condition: trigger
+      id:
+      - playalbum
+      - shufflealbum
+    sequence:
+
+    # First search attempt — pass artist as hint if provided
+    - action: music_assistant.search
+      data:
+        limit: '{{ effective_search_limit | int }}'
+        config_entry_id: '{{ ma_instance }}'
+        media_type:
+        - album
+        name: '{{ trigger.slots.album }}'
+        artist: '{{ trigger.slots.artist | default('''') }}'
+      response_variable: found_album
+
+    # LLM fallback — usually it's the artist that was misheard
+    - if:
+      - condition: template
+        value_template: '{{ found_album[''albums''] | count == 0 and use_llm_fallback }}'
+      then:
+      - variables:
+          llm_prompt: >-
+            A user is trying to play an album using a voice command, but the
+            speech-to-text system may have misheard the artist name. The raw
+            transcription is album "{{ trigger.slots.album }}" by artist
+            "{{ trigger.slots.artist | default('''') }}". Reply with ONLY the
+            most likely canonical artist name, nothing else. No punctuation
+            around it, no explanation, no quotes. If you cannot guess, reply
+            with the original artist text unchanged. If no artist was given,
+            reply with an empty string.
+      - action: conversation.process
+        data:
+          agent_id: '{{ llm_fallback_agent }}'
+          text: '{{ llm_prompt }}'
+        response_variable: llm_resolved
+      - variables:
+          resolved_artist_name: '{{ llm_resolved.response.speech.plain.speech | trim | replace(''"'', '''') }}'
+      - action: music_assistant.search
+        data:
+          limit: '{{ effective_search_limit | int }}'
+          config_entry_id: '{{ ma_instance }}'
+          media_type:
+          - album
+          name: '{{ trigger.slots.album }}'
+          artist: '{{ resolved_artist_name }}'
+        response_variable: found_album
+
+    - variables:
+        chosen_album_index: >-
+          {% if use_extended_search and use_smart_selection and (found_album['albums'] | count) > 1 %}
+            {% set album_q = (trigger.slots.album | lower) %}
+            {% set artist_q = (trigger.slots.artist | default('') | lower) %}
+            {% set ns = namespace(best_idx=0, best_score=-1) %}
+            {% for a in found_album['albums'] %}
+              {% set a_name = a.name | lower %}
+              {% set a_artist = (a.artists[0].name | lower) if a.artists else '' %}
+              {% set score = 0 %}
+              {% if a_name == album_q %}
+                {% set score = score + 100 %}
+              {% endif %}
+              {% if album_q in a_name or a_name in album_q %}
+                {% set score = score + 30 %}
+              {% endif %}
+              {% if artist_q != '' and (artist_q in a_artist or a_artist in artist_q) %}
+                {% set score = score + 50 %}
+              {% endif %}
+              {% if a.in_library is defined and a.in_library %}
+                {% set score = score + 20 %}
+              {% elif a.is_in_library is defined and a.is_in_library %}
+                {% set score = score + 20 %}
+              {% endif %}
+              {% set score = score - loop.index0 %}
+              {% if score > ns.best_score %}
+                {% set ns.best_score = score %}
+                {% set ns.best_idx = loop.index0 %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.best_idx }}
+          {% else %}
+            0
+          {% endif %}
+
+    - alias: Did we find an album?
+      if:
+      - condition: template
+        value_template: '{{ found_album[''albums''] | count > 0 }}'
+        alias: We found an album!
+      then:
+      - action: view_assist.set_state
+        target:
+          entity_id: '{{ target_satellite_device }}'
+        data:
+          mode: music
+          title: ''
+          message_font_size: 5vw
+      - action: view_assist.navigate
+        data:
+          device: '{{ target_satellite_device }}'
+          path: '{{ view_path }}'
+
+      - if:
+        - condition: trigger
+          id: shufflealbum
+        then:
+        - action: media_player.shuffle_set
+          target:
+            entity_id: '{{ target_musicplayer_device }}'
+          data:
+            shuffle: true
+        else:
+        - action: media_player.shuffle_set
+          target:
+            entity_id: '{{ target_musicplayer_device }}'
+          data:
+            shuffle: false
+
+      - action: music_assistant.play_media
+        target:
+          entity_id: '{{ target_musicplayer_device }}'
+        data:
+          media_type: album
+          enqueue: replace
+          media_id: '{{ found_album.albums[chosen_album_index | int].name }}'
+          artist: '{{ found_album.albums[chosen_album_index | int].artists[0].name if found_album.albums[chosen_album_index | int].artists else '''' }}'
+
+      - if:
+        - condition: template
+          value_template: '{{ target_use_announce is not false }}'
+        then:
+        - variables:
+            response_key: '{{ ''shufflealbum_found'' if trigger.id == ''shufflealbum'' else ''playalbum_found'' }}'
+            chosen_album_name: '{{ found_album.albums[chosen_album_index | int].name }}'
+            chosen_album_artist: '{{ found_album.albums[chosen_album_index | int].artists[0].name if found_album.albums[chosen_album_index | int].artists else '''' }}'
+            conversation_response: '{{ translations[language][''responses''][response_key].replace("{album}", chosen_album_name).replace("{artist}", chosen_album_artist) }}'
+        - set_conversation_response: '{{ conversation_response }}'
+        - action: view_assist.set_state
+          target:
+            entity_id: '{{ target_satellite_device }}'
+          data:
+            last_said: '{{ conversation_response }}'
+        else:
+        - set_conversation_response: ''
+      else:
+      - if:
+        - condition: template
+          value_template: '{{ target_use_announce is not false }}'
+        then:
+        - variables:
+            conversation_response: '{{ translations[language][''responses''][''playalbum_not_found''].replace("{search_album}", trigger.slots.album) }}'
+        - set_conversation_response: '{{ conversation_response }}'
+        - action: view_assist.set_state
+          target:
+            entity_id: '{{ target_satellite_device }}'
+          data:
+            last_said: '{{ conversation_response }}'
+        else:
+        - set_conversation_response: ''
+
+  # ============================================================
+  # PLAYLIST (play / shuffle)
+  # ============================================================
+  - conditions:
+    - condition: trigger
+      id:
+      - playlist
+      - shuffleplaylist
+    sequence:
+    - action: music_assistant.search
+      data:
+        limit: '{{ effective_search_limit | int }}'
+        config_entry_id: '{{ ma_instance }}'
+        media_type:
+        - playlist
+        name: '{{ trigger.slots.playlist }}'
+      response_variable: found_playlist
+
+    - variables:
+        chosen_playlist_index: >-
+          {% if use_extended_search and use_smart_selection and (found_playlist['playlists'] | count) > 1 %}
+            {% set query = (trigger.slots.playlist | lower) %}
+            {% set ns = namespace(best_idx=0, best_score=-1) %}
+            {% for p in found_playlist['playlists'] %}
+              {% set name_l = p.name | lower %}
+              {% set score = 0 %}
+              {% if name_l == query %}
+                {% set score = score + 100 %}
+              {% endif %}
+              {% if query in name_l or name_l in query %}
+                {% set score = score + 30 %}
+              {% endif %}
+              {% if p.in_library is defined and p.in_library %}
+                {% set score = score + 20 %}
+              {% elif p.is_in_library is defined and p.is_in_library %}
+                {% set score = score + 20 %}
+              {% endif %}
+              {% set score = score - loop.index0 %}
+              {% if score > ns.best_score %}
+                {% set ns.best_score = score %}
+                {% set ns.best_idx = loop.index0 %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.best_idx }}
+          {% else %}
+            0
+          {% endif %}
+
+    - alias: Did we find a playlist?
+      if:
+      - condition: template
+        value_template: '{{ found_playlist[''playlists''] | count > 0 }}'
+        alias: We found a playlist!
+      then:
+      - action: view_assist.set_state
+        target:
+          entity_id: '{{ target_satellite_device }}'
+        data:
+          mode: music
+          title: ''
+          message_font_size: 5vw
+      - action: view_assist.navigate
+        data:
+          device: '{{ target_satellite_device }}'
+          path: '{{ view_path }}'
+
+      - if:
+        - condition: trigger
+          id: shuffleplaylist
+        then:
+        - action: media_player.shuffle_set
+          target:
+            entity_id: '{{ target_musicplayer_device }}'
+          data:
+            shuffle: true
+        else:
+        - action: media_player.shuffle_set
+          target:
+            entity_id: '{{ target_musicplayer_device }}'
+          data:
+            shuffle: false
+
+      - action: music_assistant.play_media
+        target:
+          entity_id: '{{ target_musicplayer_device }}'
+        data:
+          media_type: playlist
+          enqueue: replace
+          media_id: '{{ found_playlist.playlists[chosen_playlist_index | int].name }}'
+
+      - if:
+        - condition: template
+          value_template: '{{ target_use_announce is not false }}'
+        then:
+        - variables:
+            response_key: '{{ ''shuffleplaylist_found'' if trigger.id == ''shuffleplaylist'' else ''playlist_found'' }}'
+            conversation_response: '{{ translations[language][''responses''][response_key].replace("{playlist}", found_playlist.playlists[chosen_playlist_index | int].name) }}'
+        - set_conversation_response: '{{ conversation_response }}'
+        - action: view_assist.set_state
+          target:
+            entity_id: '{{ target_satellite_device }}'
+          data:
+            last_said: '{{ conversation_response }}'
+        else:
+        - set_conversation_response: ''
+      else:
+      - if:
+        - condition: template
+          value_template: '{{ target_use_announce is not false }}'
+        then:
+        - variables:
+            conversation_response: '{{ translations[language][''responses''][''playlist_not_found''].replace("{search_playlist}", trigger.slots.playlist) }}'
+        - set_conversation_response: '{{ conversation_response }}'
+        - action: view_assist.set_state
+          target:
+            entity_id: '{{ target_satellite_device }}'
+          data:
+            last_said: '{{ conversation_response }}'
+        else:
+        - set_conversation_response: ''
+
+  # ============================================================
+  # SONG (play / queue)
+  # ============================================================
+  # Guard: refuse to run if {song} captured a qualifier word that means this
+  # was actually an artist request like "play music by X". Without this, the
+  # song trigger and the artist trigger can both fire on the same input.
+  - conditions:
+    - condition: trigger
+      id:
+      - playsong
+      - cuesong
+    - condition: template
+      value_template: >-
+        {{ trigger.slots.song | lower | trim not in
+           ['music', 'some music', 'songs', 'some songs', 'song', 'a song',
+            'tracks', 'some tracks'] }}
+    sequence:
+    - action: music_assistant.search
+      data:
+        limit: '{{ effective_search_limit | int }}'
+        config_entry_id: '{{ ma_instance }}'
+        media_type:
+        - track
+        name: '{{ trigger.slots.song }}'
+        artist: '{{ trigger.slots.artist | default('''') }}'
+      response_variable: found_track
+
+    # LLM fallback for songs — usually the artist that was misheard
+    - if:
+      - condition: template
+        value_template: '{{ found_track[''tracks''] | count == 0 and use_llm_fallback }}'
+      then:
+      - variables:
+          llm_prompt: >-
+            A user is trying to play a song using a voice command, but the
+            speech-to-text system may have misheard the artist name. The raw
+            transcription is song "{{ trigger.slots.song }}" by artist
+            "{{ trigger.slots.artist }}". Reply with ONLY the most likely
+            canonical artist name, nothing else. No punctuation around it, no
+            explanation, no quotes. If you cannot guess, reply with the
+            original artist text unchanged.
+      - action: conversation.process
+        data:
+          agent_id: '{{ llm_fallback_agent }}'
+          text: '{{ llm_prompt }}'
+        response_variable: llm_resolved
+      - variables:
+          resolved_artist_name: '{{ llm_resolved.response.speech.plain.speech | trim | replace(''"'', '''') }}'
+      - action: music_assistant.search
+        data:
+          limit: '{{ effective_search_limit | int }}'
+          config_entry_id: '{{ ma_instance }}'
+          media_type:
+          - track
+          name: '{{ trigger.slots.song }}'
+          artist: '{{ resolved_artist_name }}'
+        response_variable: found_track
+
+    - variables:
+        chosen_track_index: >-
+          {% if use_extended_search and use_smart_selection and (found_track['tracks'] | count) > 1 %}
+            {% set song_q = (trigger.slots.song | lower) %}
+            {% set artist_q = (trigger.slots.artist | default('') | lower) %}
+            {% set ns = namespace(best_idx=0, best_score=-1) %}
+            {% for t in found_track['tracks'] %}
+              {% set t_name = t.name | lower %}
+              {% set t_artist = (t.artists[0].name | lower) if t.artists else '' %}
+              {% set score = 0 %}
+              {% if t_name == song_q %}
+                {% set score = score + 100 %}
+              {% endif %}
+              {% if song_q in t_name or t_name in song_q %}
+                {% set score = score + 30 %}
+              {% endif %}
+              {% if artist_q != '' and (artist_q in t_artist or t_artist in artist_q) %}
+                {% set score = score + 50 %}
+              {% endif %}
+              {% if t.in_library is defined and t.in_library %}
+                {% set score = score + 20 %}
+              {% elif t.is_in_library is defined and t.is_in_library %}
+                {% set score = score + 20 %}
+              {% endif %}
+              {% set score = score - loop.index0 %}
+              {% if score > ns.best_score %}
+                {% set ns.best_score = score %}
+                {% set ns.best_idx = loop.index0 %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.best_idx }}
+          {% else %}
+            0
+          {% endif %}
+
+    - alias: Did we find a track?
+      if:
+      - condition: template
+        value_template: '{{ found_track[''tracks''] | count > 0 }}'
+        alias: We found a track!
+      then:
+      - action: view_assist.set_state
+        target:
+          entity_id: '{{ target_satellite_device }}'
+        data:
+          mode: music
+          title: ''
+          message_font_size: 5vw
+      - action: view_assist.navigate
+        data:
+          device: '{{ target_satellite_device }}'
+          path: '{{ view_path }}'
+
+      - alias: Set enqueue based on cuesong or playsong trigger
+        choose:
+        - conditions:
+          - condition: trigger
+            id:
+            - cuesong
+          sequence:
+          - action: music_assistant.play_media
+            target:
+              entity_id: '{{ target_musicplayer_device }}'
+            data:
+              media_type: track
+              enqueue: next
+              media_id: '{{ found_track.tracks[chosen_track_index | int].name }}'
+              artist: '{{ trigger.slots.artist }}'
+          - if:
+            - condition: template
+              value_template: '{{ target_use_announce is not false }}'
+            then:
+            - variables:
+                conversation_response: '{{ translations[language][''responses''][''playsong_queue''].replace("{artist}", found_track.tracks[chosen_track_index | int].artists[0].name).replace("{song}", found_track.tracks[chosen_track_index | int].name) }}'
+            - set_conversation_response: '{{ conversation_response }}'
+            - action: view_assist.set_state
+              target:
+                entity_id: '{{ target_satellite_device }}'
+              data:
+                last_said: '{{ conversation_response }}'
+            else:
+            - set_conversation_response: ''
+        - conditions:
+          - condition: trigger
+            id:
+            - playsong
+          sequence:
+          - action: music_assistant.play_media
+            target:
+              entity_id: '{{ target_musicplayer_device }}'
+            data:
+              media_type: track
+              enqueue: play
+              media_id: '{{ found_track.tracks[chosen_track_index | int].name }}'
+              artist: '{{ trigger.slots.artist }}'
+          - if:
+            - condition: template
+              value_template: '{{ target_use_announce is not false }}'
+            then:
+            - variables:
+                conversation_response: '{{ translations[language][''responses''][''playsong_found''].replace("{artist}", found_track.tracks[chosen_track_index | int].artists[0].name).replace("{song}", found_track.tracks[chosen_track_index | int].name) }}'
+            - set_conversation_response: '{{ conversation_response }}'
+            - action: view_assist.set_state
+              target:
+                entity_id: '{{ target_satellite_device }}'
+              data:
+                last_said: '{{ conversation_response }}'
+            else:
+            - set_conversation_response: ''
+      else:
+      - if:
+        - condition: template
+          value_template: '{{ target_use_announce is not false }}'
+        then:
+        - variables:
+            conversation_response: '{{ translations[language][''responses''][''playsong_not_found''].replace("{artist}", trigger.slots.artist).replace("{song}", trigger.slots.song) }}'
+        - set_conversation_response: '{{ conversation_response }}'
+        - action: view_assist.set_state
+          target:
+            entity_id: '{{ target_satellite_device }}'
+          data:
+            last_said: '{{ conversation_response }}'
+        else:
+        - set_conversation_response: ''
